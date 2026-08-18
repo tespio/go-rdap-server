@@ -1,0 +1,7 @@
+scrape_configs:
+  - job_name: "rdap-server"
+    static_configs:
+      - targets: ["rdap-server:9090"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s

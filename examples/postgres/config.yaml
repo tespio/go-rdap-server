@@ -1,0 +1,69 @@
+# RDAP Server — PostgreSQL example configuration.
+# Load the schema + seed first:
+#   psql -U rdap -d rdap -f examples/postgres/schema.sql
+#   psql -U rdap -d rdap -f examples/postgres/seed.sql
+# Then run: ./rdapd -config examples/postgres/config.yaml
+
+server:
+  host: "0.0.0.0"
+  port: 8443
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  max_header_bytes: 1048576
+  # tls_cert_file: "/etc/rdap/certs/tls.crt"
+  # tls_key_file: "/etc/rdap/certs/tls.key"
+
+storage:
+  driver: "postgres"                       # postgres | mysql | memory
+  dsn: "postgres://rdap:rdap@localhost:5432/rdap?sslmode=disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  cache_ttl: "5m"
+
+rdap:
+  mode: "registrar"                        # registrar | registry
+  tlds:
+    - "com"
+    - "net"
+    - "org"
+    - "info"
+    - "biz"
+    - "io"
+    - "ai"
+    - "app"
+    - "dev"
+    - "co"
+  base_url: "https://rdap.example.com"
+  # Example placeholder RDAP base URL for the registrar.
+  # For ICANN conformance (-47701) set this to the base URL registered in the IANA
+  # registrar-ids dataset for the registrar IANA ID used in your data
+  # (e.g. IANA ID 2 -> https://rdap.networksolutions.com/rdap/).
+  registrar_base_url: "https://rdap.example.org/rdap/"
+  max_domain_length: 253
+  max_search_limit: 100
+  port43_whois: "whois.example.com"
+  server_name: "RDAP Server v1.0"
+  version: "1.0.0"
+
+auth:
+  enabled: false
+  jwks_endpoint: "https://auth.example.com/.well-known/jwks.json"
+  issuer: "https://auth.example.com"
+  audience: "rdap.example.com"
+
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9090
+
+rate_limiting:
+  enabled: true
+  requests: 100
+  window: 1m
+  burst: 50
+  trusted_ips:
+    - "127.0.0.1"
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"

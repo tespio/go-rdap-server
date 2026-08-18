@@ -1,0 +1,28 @@
+# Build artifacts
+rdapd.exe
+build/
+*.exe
+*.test
+*.out
+
+# Editor / OS
+*~
+.DS_Store
+.vscode
+.idea
+
+# Test / coverage
+coverage.*
+*.log
+*.tmp
+*.bak
+
+# Local conformance tooling (JAR, IANA datasets, results, TLS keys/truststore)
+.rdapct/
+
+# TLS material and credentials (never commit)
+*.key
+*.p12
+*.jks
+*.pem
+*.crt

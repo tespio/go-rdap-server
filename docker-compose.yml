@@ -1,0 +1,108 @@
+version: "3.8"
+
+services:
+  rdap-server:
+    build: .
+    container_name: rdap-server
+    ports:
+      - "8443:8443"
+      - "9090:9090"
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - rdap-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "512M"
+        reservations:
+          cpus: "0.5"
+          memory: "256M"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rdap-postgres
+    environment:
+      POSTGRES_DB: rdap
+      POSTGRES_USER: rdap
+      POSTGRES_PASSWORD: rdap
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rdap"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: rdap-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    container_name: rdap-mysql
+    environment:
+      MYSQL_DATABASE: rdap
+      MYSQL_USER: rdap
+      MYSQL_PASSWORD: rdap
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./migrations/002_mysql_init.sql:/docker-entrypoint-initdb.d/002_mysql_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u rdap -prdap --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: rdap-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: rdap-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  rdap-data:
+  postgres-data:
+  redis-data:
+  mysql-data:
+  prometheus-data:
+  grafana-data:

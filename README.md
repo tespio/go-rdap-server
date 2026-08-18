@@ -1,0 +1,703 @@
+# RDAP Server
+
+A production-ready [Registration Data Access Protocol (RDAP)](https://datatracker.ietf.org/doc/html/rfc9082)
+server built in Go. It serves registration data (domains, entities, nameservers, IP
+networks, and autonomous system numbers) over HTTP/HTTPS as JSON, and is designed to
+operate as either a **gTLD registry** or a **gTLD registrar** RDAP service.
+
+It is validated against the official
+[ICANN RDAP Conformance Tool](https://icann.github.io/rdap-conformance-tool/) and
+passes **STD 95 (RFC 9082/9083)**, the **2019 gTLD Profile**, and the **2024 gTLD
+Profile** for registrar mode with zero errors.
+
+## Features
+
+- **RFC 9082/9083 (STD 95) compliant** — lookups and searches for domains, entities,
+  nameservers, IP networks, and autnums.
+- **2019 and 2024 gTLD RDAP Profiles** — ICANN Response Profile + Technical
+  Implementation Guide (single conformance array covers both).
+- **Dual operator modes** — `registrar` or `registry` (see
+  [Operator Modes](#operator-modes)).
+- **IDN support** — Internationalized Domain Names via IDNA 2008
+  (`unicodeName`/`ldhName`).
+- **DNSSEC** — `secureDNS` with DS records and `delegationSigned`.
+- **jCard vCards** — RFC 6350/7095 JSON vCard contact data for entities.
+- **Dual storage backends** — in-memory (development), PostgreSQL, and MySQL (production).
+- **Rate limiting** — per-IP, configurable window and burst.
+- **Optional authentication** — JWT/Bearer token via JWKS.
+- **Prometheus metrics** — built-in `/metrics`-style endpoint.
+- **CORS + security headers** — ready for browser clients.
+- **HTTPS/TLS** — native TLS termination or reverse-proxy termination
+  (`X-Forwarded-Proto`).
+- **Docker** — multi-stage image plus a full `docker-compose` stack.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Operator Modes](#operator-modes)
+- [Configuration](#configuration)
+- [API Endpoints](#api-endpoints)
+- [Example Responses](#example-responses)
+- [Storage](#storage)
+- [Examples](#examples)
+- [ICANN Conformance](#icann-conformance)
+- [Production Deployment](#production-deployment)
+- [RFC 9537 Redaction (2024 Profile)](#rfc-9537-redaction-2024-profile)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [License](#license)
+
+## Quick Start
+
+Requirements: [Go 1.22+](https://go.dev/dl).
+
+```bash
+# Build
+go build -o rdapd.exe ./cmd/rdapd
+
+# Run with the in-memory store (no external dependencies)
+./rdapd.exe -config config.yaml
+
+# Or with the Makefile
+make run
+```
+
+The server listens on `:8443` (RDAP) and `:9090` (metrics) by default.
+
+```bash
+# Smoke test
+curl -i http://localhost:8443/help
+curl -i http://localhost:8443/domain/example.com
+curl -i http://localhost:8443/nameserver/ns1.example.com
+curl -i http://localhost:8443/entity/2
+curl -i http://localhost:8443/ip/8.8.8.0/24
+curl -i http://localhost:8443/autnum/15169
+curl -i http://localhost:8443/domain/not-a-domain.invalid   # → 404 (RFC 7482 §4.1)
+```
+
+## Operator Modes
+
+Set `rdap.mode` in `config.yaml` to tell the server whether it is operated by a
+registrar or a registry. This controls which data the domain responses include.
+
+| Mode | Registrant entity | `registrar expiration` event | Typical operator |
+|------|:---:|:---:|------------------|
+| `registrar` (default) | ✅ included | ✅ included | Registrars (have full contact data) |
+| `registry` | ❌ omitted | ❌ omitted | Registries (thin/thick) |
+
+```yaml
+rdap:
+  mode: "registrar"   # or "registry"
+```
+
+Rationale:
+
+- **Registrar servers** must return a `registrant` role entity (`-63000`) and a
+  `registrar expiration` event (`-65600`) per the 2024 gTLD Response Profile.
+- **Registry servers** usually do not publish registrant contact data; omitting the
+  entity is valid, and the registrant/technical tests only apply *if present*.
+- **Registry servers** additionally require the queried TLD's RDAP base URL to be
+  registered in the [IANA DNS RDAP bootstrap file](https://www.iana.org/domains/rdap)
+  (`-23101`); see [ICANN Conformance](#icann-conformance).
+
+## Configuration
+
+The server reads a YAML file (`-config config.yaml`). Every field is optional except
+`rdap.base_url`; sensible defaults are applied.
+
+```yaml
+server:
+  host: "0.0.0.0"            # bind address ("" or "0.0.0.0" = all interfaces, dual-stack)
+  port: 8443                 # RDAP listener port
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  max_header_bytes: 1048576
+  tls_cert_file: "/etc/rdap/certs/tls.crt"   # set both to enable TLS
+  tls_key_file:  "/etc/rdap/certs/tls.key"
+
+storage:
+  driver: "memory"           # "memory" | "postgres"
+  dsn: "postgres://rdap:rdap@localhost:5432/rdap?sslmode=disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  cache_ttl: "5m"
+
+rdap:
+  mode: "registrar"          # "registrar" | "registry"
+  tlds: ["com", "net", "org", "io", "ai", ...]
+  base_url: "https://rdap.example.com"       # your public RDAP base URL (required)
+  registrar_base_url: "https://rdap.example.org/rdap/"  # example registrar RDAP base URL
+  max_domain_length: 253
+  max_search_limit: 100
+  port43_whois: "whois.example.com"
+  server_name: "RDAP Server v1.0"
+  version: "1.0.0"
+
+auth:
+  enabled: false
+  jwks_endpoint: "https://auth.example.com/.well-known/jwks.json"
+  issuer: "https://auth.example.com"
+  audience: "rdap.example.com"
+
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9090
+
+rate_limiting:
+  enabled: true
+  requests: 100             # per IP per window
+  window: 1m
+  burst: 50
+  trusted_ips: ["127.0.0.1", "10.0.0.0/8", "192.168.0.0/16"]  # exempt from limits
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `server.host` | `0.0.0.0` | Bind address; `""`/`0.0.0.0` binds all interfaces (IPv4+IPv6) |
+| `server.port` | `8443` | RDAP listener port |
+| `server.tls_cert_file` / `server.tls_key_file` | *(unset)* | Enable TLS when both set |
+| `storage.driver` | `memory` | `memory`, `postgres`, or `mysql` |
+| `storage.dsn` | *(unset)* | PostgreSQL connection string (required for `postgres`) |
+| `rdap.mode` | `registrar` | `registrar` or `registry` |
+| `rdap.tlds` | *(unset)* | Allowed TLDs for domain lookups |
+| `rdap.base_url` | *(required)* | Public base URL; used for self links and notice hrefs |
+| `rdap.registrar_base_url` | `base_url` | RDAP base URL of the registrar (used for the `about`/`related` links). The shipped config uses the example URL `https://rdap.example.org/rdap/`; for ICANN conformance (`-47701`) set it to the base URL registered in the IANA registrar-ids dataset for the registrar IANA ID in your data (e.g. ID 2 → `https://rdap.networksolutions.com/rdap/`) |
+| `rdap.max_domain_length` | `253` | Max domain name length |
+| `rdap.max_search_limit` | `100` | Max results for search endpoints |
+| `rdap.port43_whois` | *(unset)* | Whois server host for the `port43` member |
+| `rdap.server_name` | *(unset)* | Server display name |
+| `rdap.version` | `1.0` | Server version string |
+| `auth.enabled` | `false` | Enable JWT authentication |
+| `metrics.enabled` | `true` | Enable the Prometheus metrics endpoint |
+| `rate_limiting.enabled` | `true` | Enable per-IP rate limiting |
+
+## API Endpoints
+
+### Lookups
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`/`HEAD` | `/help` | Help, supported endpoints, and notices |
+| `GET`/`HEAD` | `/domain/{name}` | Domain lookup |
+| `GET`/`HEAD` | `/entity/{handle}` | Entity lookup (registrar/registrant/contact) |
+| `GET`/`HEAD` | `/nameserver/{name}` | Nameserver lookup |
+| `GET`/`HEAD` | `/ip/{network}` | IP network lookup (`CIDR`) |
+| `GET`/`HEAD` | `/autnum/{asn}` | Autonomous system number lookup |
+
+`HEAD` returns the same status code and headers as `GET` (required by TIG 1.6).
+
+### Searches (RFC 7482)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`/`HEAD` | `/domains?name={pattern}` | Search domains by name (wildcards `*` allowed) |
+| `GET`/`HEAD` | `/domains?nsLdhName={ns}` | Search domains by nameserver |
+| `GET`/`HEAD` | `/entities?fn={pattern}` | Search entities by full name |
+| `GET`/`HEAD` | `/entities?handle={pattern}` | Search entities by handle |
+| `GET`/`HEAD` | `/nameservers?name={pattern}` | Search nameservers by name |
+| `GET`/`HEAD` | `/nameservers?ip={address}` | Search nameservers by IP |
+
+All search responses are arrays of the matched objects. Add `?limit=n` to cap results
+(hard cap = `rdap.max_search_limit`).
+
+### Examples
+
+```bash
+# Lookups
+curl "http://localhost:8443/domain/example.com"
+curl "http://localhost:8443/entity/2"
+curl "http://localhost:8443/nameserver/ns1.example.com"
+curl "http://localhost:8443/ip/8.8.8.0/24"
+curl "http://localhost:8443/autnum/15169"
+
+# Searches
+curl "http://localhost:8443/domains?name=example*"
+curl "http://localhost:8443/domains?nsLdhName=ns1.example.com"
+curl "http://localhost:8443/entities?fn=Example*"
+curl "http://localhost:8443/entities?handle=REG1*"
+curl "http://localhost:8443/nameservers?name=ns1*"
+curl "http://localhost:8443/nameservers?ip=8.8.8.8"
+```
+
+## Example Responses
+
+### Domain lookup
+
+`GET /domain/example.com` (registrar mode)
+
+```json
+{
+  "objectClassName": "domain",
+  "handle": "EX1-NAME",
+  "ldhName": "example.com",
+  "unicodeName": "example.com",
+  "status": ["associated"],
+  "events": [
+    {"eventAction": "registration", "eventDate": "2025-08-18T20:00:00Z"},
+    {"eventAction": "last changed", "eventDate": "2026-08-18T20:00:00Z"},
+    {"eventAction": "expiration", "eventDate": "2027-08-18T20:00:00Z"},
+    {"eventAction": "last update of RDAP database", "eventDate": "2026-08-18T20:00:00Z"},
+    {"eventAction": "registrar expiration", "eventDate": "2027-08-18T20:00:00Z"}
+  ],
+  "nameservers": [
+    {
+      "objectClassName": "nameserver",
+      "handle": "NS1-NAME",
+      "ldhName": "ns1.example.com",
+      "ipAddresses": {"v4": ["8.8.8.8"], "v6": ["2001:4860:4860::8888"]},
+      "links": [{
+        "rel": "self",
+        "href": "https://rdap.example.com/nameserver/ns1.example.com",
+        "type": "application/rdap+json",
+        "value": "https://rdap.example.com/domain/example.com"
+      }]
+    }
+  ],
+  "entities": [
+    {
+      "objectClassName": "entity",
+      "handle": "2",
+      "roles": ["registrar"],
+      "publicIds": [{"type": "IANA Registrar ID", "identifier": "2"}],
+      "vcardArray": [
+        "vcard",
+        [
+          ["version", {}, "text", "4.0"],
+          ["fn", {}, "text", "Example Registrar Inc."],
+          ["adr", {"cc": "US"}, "text", ["", "", "123 Maple Ave", "Los Angeles", "CA", "90210", ""]]
+        ]
+      ],
+      "links": [{
+        "rel": "about",
+        "href": "https://rdap.example.org/rdap/",
+        "type": "application/rdap+json",
+        "value": "https://rdap.example.org/rdap/"
+      }],
+      "entities": [{
+        "objectClassName": "entity",
+        "handle": "ABUSE-NAME",
+        "roles": ["abuse"],
+        "vcardArray": [
+          "vcard",
+          [
+            ["version", {}, "text", "4.0"],
+            ["fn", {}, "text", "Abuse Contact"],
+            ["tel", {"type": ["voice"]}, "uri", "tel:+1-555-123-4567"],
+            ["email", {}, "text", "abuse@example.com"]
+          ]
+        ]
+      }]
+    },
+    {
+      "objectClassName": "entity",
+      "handle": "REG1-NAME",
+      "roles": ["registrant"],
+      "vcardArray": [
+        "vcard",
+        [
+          ["version", {}, "text", "4.0"],
+          ["fn", {}, "text", "Example Registrant"],
+          ["org", {}, "text", "Example Organization"],
+          ["adr", {"cc": "US"}, "text", ["", "", "123 Elm Street", "Springfield", "IL", "62701", ""]],
+          ["tel", {"type": ["voice"]}, "uri", "tel:+1-217-555-0132"],
+          ["email", {}, "text", "registrant@example.com"]
+        ]
+      ]
+    }
+  ],
+  "secureDNS": {"zoneSigned": false, "delegationSigned": false},
+  "links": [
+    {"rel": "self", "href": "https://rdap.example.com/domain/example.com", "type": "application/rdap+json", "value": "https://rdap.example.com/domain/example.com"},
+    {"rel": "related", "href": "https://rdap.example.org/rdap/domain/example.com", "type": "application/rdap+json", "value": "https://rdap.example.com/domain/example.com"}
+  ],
+  "rdapConformance": [
+    "rdap_level_0",
+    "icann_rdap_technical_implementation_guide_0",
+    "icann_rdap_response_profile_0",
+    "icann_rdap_technical_implementation_guide_1",
+    "icann_rdap_response_profile_1"
+  ],
+  "notices": [
+    {
+      "title": "Status Codes",
+      "description": ["For more information on domain status codes, please visit https://icann.org/epp"],
+      "links": [{"rel": "glossary", "href": "https://icann.org/epp", "type": "text/html", "value": "<request url>"}]
+    },
+    {
+      "title": "RDDS Inaccuracy Complaint Form",
+      "description": ["URL of the ICANN RDDS Inaccuracy Complaint Form: https://icann.org/wicf"],
+      "links": [{"rel": "help", "href": "https://icann.org/wicf", "type": "text/html", "value": "<request url>"}]
+    }
+  ]
+}
+```
+
+> **Note:** the `value` member of every link reflects the *actual* request URL
+> (scheme auto-detected from `X-Forwarded-Proto`/TLS, port added when the `Host`
+> header omits it).
+
+### Error response
+
+Not-found objects return `404` with an RDAP error object (RFC 9083 §6):
+
+```json
+{
+  "errorCode": 404,
+  "title": "Domain not found",
+  "description": ["No domain found for: example.invalid"],
+  "lang": "en"
+}
+```
+
+## Storage
+
+The server supports three storage backends, selected with `storage.driver`:
+`memory` (development), `postgres`, or `mysql` (production).
+
+| Capability | memory | PostgreSQL | MySQL |
+|-----------|:---:|:---:|:---:|
+| Zero-config, seeded sample data | ✅ | – | – |
+| JSON columns | – | `jsonb` | `JSON` |
+| CIDR lookup | native | `inet`/`cidr[]` (GIST) | numeric range columns (`BIGINT`/`VARBINARY(16)`) |
+| Connection pooling | – | `pgxpool` | `database/sql` |
+| Migration file | – | `migrations/001_init.sql` | `migrations/002_mysql_init.sql` |
+
+### In-memory (development)
+
+The default `memory` store is seeded with sample data:
+
+| Type | Handle / key | Notes |
+|------|--------------|-------|
+| Domain | `EX1-NAME` (`example.com`) | status `["associated"]`, registrar `2`, tech `888` |
+| Registrar entity | `2` | IANA Registrar ID 2 (Network Solutions sample) |
+| Technical entity | `888` | |
+| Nameservers | `NS1-NAME`, `NS2-NAME` | `ns1.example.com`, `ns2.example.com` |
+| IP network | `8.8.8.0/24` | |
+| Autnum | `15169` | |
+
+The sample handles follow the EPP ROID shape `<local-id>-<EPPROID>` where the suffix
+is a repository ID registered in the IANA [EPP Repository Identifiers registry](https://www.iana.org/assignments/epp-repository-ids/).
+
+### PostgreSQL (production)
+
+```yaml
+storage:
+  driver: "postgres"
+  dsn: "postgres://user:pass@localhost:5432/rdap?sslmode=require"
+```
+
+Apply the schema (domains, entities, nameservers, domain_nameservers, ip_networks,
+autnums, audit_log):
+
+```bash
+make migrate-up          # go run ./cmd/migrate -direction up
+# or
+psql -U rdap -d rdap -f migrations/001_init.sql
+```
+
+Implementation: `internal/store/postgres.go` (uses `jackc/pgx/v5`).
+
+### MySQL (production)
+
+MySQL 8.0+ is required. The DSN can use the native
+[go-sql-driver](https://github.com/go-sql-driver/mysql) format or a `mysql://` URL
+(accepted for consistency with the `postgres://` form):
+
+```yaml
+storage:
+  driver: "mysql"
+  dsn: "mysql://rdap:rdap@tcp(localhost:3306)/rdap?parseTime=true&charset=utf8mb4"
+```
+
+Apply the schema:
+
+```bash
+mysql -u rdap -p < migrations/002_mysql_init.sql
+```
+
+Because MySQL has no native CIDR/inet type, IP networks are stored as numeric ranges
+(`start_ip`/`end_ip` for IPv4 as `BIGINT UNSIGNED`, `start_ip6`/`end_ip6` for IPv6 as
+`VARBINARY(16)`); the server computes the queried range and matches numerically.
+
+Implementation: `internal/store/mysql.go` (uses `database/sql` + `go-sql-driver/mysql`).
+
+## Examples
+
+Ready-to-run example databases (five domains, entities, nameservers, networks and
+ASNs) with per-database configs live in the [`examples/`](examples/) directory:
+
+| Example | Schema | Seed | Config |
+|---------|--------|------|--------|
+| PostgreSQL | `examples/postgres/schema.sql` | `examples/postgres/seed.sql` | `examples/postgres/config.yaml` |
+| MySQL | `examples/mysql/schema.sql` | `examples/mysql/seed.sql` | `examples/mysql/config.yaml` |
+
+```bash
+# PostgreSQL
+psql -U rdap -d rdap -f examples/postgres/schema.sql
+psql -U rdap -d rdap -f examples/postgres/seed.sql
+./rdapd -config examples/postgres/config.yaml
+
+# MySQL
+mysql -u rdap -p < examples/mysql/schema.sql
+mysql -u rdap -p < examples/mysql/seed.sql
+./rdapd -config examples/mysql/config.yaml
+```
+
+Seeded domains include `example.com`, `example.net`, `example.org`, `example.info` and
+the IDN `bücher.com` (`xn--bcher-kva.com`).
+
+> **Note:** these databases contain fabricated sample data for development and
+> documentation only. For production you connect the server to your *own* database.
+> The `examples/` directory also documents the exact schema contract the server reads
+> and three ways to map it to an existing database (direct match, SQL views, or a
+> custom store). See [`examples/README.md`](examples/README.md#mapping-to-your-existing-database).
+
+## ICANN Conformance
+
+The server is validated against the official
+[ICANN RDAP Conformance Tool](https://icann.github.io/rdap-conformance-tool/)
+(v3.1.0, `rdapct-3.1.0.jar`). Results (queried over HTTPS):
+
+| Test configuration | Groups | Errors |
+|--------------------|-------:|-------:|
+| STD 95 (RFC 9082/9083) | 31 | 0 |
+| gTLD Registrar — 2019 profile | 59 | 0 |
+| gTLD Registrar — 2024 profile | 78 | 0 |
+| gTLD Registry — 2019 profile | 60 | 2* |
+| gTLD Registry — 2024 profile | 78 | 2* |
+
+\* Only `-23101`: the queried TLD's RDAP base URL must be registered in the
+[IANA DNS RDAP bootstrap](https://www.iana.org/domains/rdap). A production registry
+must register its real base URL in the bootstrap file (e.g. `.com` points to Verisign).
+This is a registration/data constraint, not a server defect.
+
+> **About `registrar_base_url` and `-47701`:** the shipped configs use the placeholder
+> URL `https://rdap.example.org/rdap/` because it is an *example*. The conformance
+> test `-47701` requires the `about` link of the registrar entity to equal the base URL
+> registered for that registrar's IANA ID in the [registrar-ids dataset](https://www.iana.org/assignments/registrar-ids/).
+> The conformance runs above were executed with `rdap.registrar_base_url` set to the
+> registered value (`https://rdap.networksolutions.com/rdap/` for IANA Registrar ID 2).
+> Before running the tool, set it to the registered URL for the registrar IANA ID in
+> your data.
+
+### Prerequisites for local conformance runs
+
+The gTLD profiles require HTTPS (TIG 1.2). rdapct runs on **Java 21+** and needs the
+IANA datasets (downloads them on first run).
+
+1. Install the tool:
+   ```bash
+   # Download from https://github.com/icann/rdap-conformance-tool/releases
+   java -jar rdapct-3.1.0.jar --help
+   ```
+
+2. Generate a self-signed certificate and a combined truststore:
+   ```bash
+   # cert for 127.0.0.1.nip.io (a wildcard DNS name that resolves to 127.0.0.1,
+   # so notice-link hosts pass URL validation). Put tls.crt/tls.key where your
+   # config points, then build a truststore that ALSO contains the public CAs:
+   #   cp $JAVA_HOME/lib/security/cacerts combined.jks
+   #   keytool -importcert -alias rdap -file tls.crt -keystore combined.jks -storepass changeit
+   ```
+
+3. Run the server with TLS enabled (`tls_cert_file`/`tls_key_file` set), then:
+
+```bash
+# STD 95 (RFC compliance)
+java -Djavax.net.ssl.trustStore=combined.jks -Djavax.net.ssl.trustStorePassword=changeit \
+  -jar rdapct-3.1.0.jar -c rdapct_config.json \
+  --no-ipv6-queries --additional-conformance-queries \
+  https://127.0.0.1.nip.io:8443/domain/example.com
+
+# gTLD Registrar — 2024 profile (use --use-rdap-profile-february-2019 for 2019)
+java -Djavax.net.ssl.trustStore=combined.jks -Djavax.net.ssl.trustStorePassword=changeit \
+  -jar rdapct-3.1.0.jar -c rdapct_config.json \
+  --gtld-registrar --use-rdap-profile-february-2024 \
+  --no-ipv6-queries --additional-conformance-queries \
+  https://127.0.0.1.nip.io:8443/domain/example.com
+
+# gTLD Registry — 2024 profile (run the server with rdap.mode: "registry")
+java -Djavax.net.ssl.trustStore=combined.jks -Djavax.net.ssl.trustStorePassword=changeit \
+  -jar rdapct-3.1.0.jar -c rdapct_config.json \
+  --gtld-registry --use-rdap-profile-february-2024 \
+  --no-ipv6-queries --additional-conformance-queries \
+  https://127.0.0.1.nip.io:8443/domain/example.com
+```
+
+Notes:
+
+- `--no-ipv6-queries` avoids connection failures on hosts without IPv6.
+- `--additional-conformance-queries` additionally tests `/help` and
+  `/domain/not-a-domain.invalid`.
+- Results are written to `results/results-<timestamp>.json`.
+
+### Docker method
+
+```bash
+docker buildx build -t rdapct .
+docker run rdapct --gtld-registrar --use-rdap-profile-february-2024 \
+  https://rdap.example.com/domain/example.com
+```
+
+### Conformance matrix (key tests)
+
+| Test | Requirement | Status |
+|------|-------------|--------|
+| `-10505` | `rdapConformance` NOT in embedded objects | ✓ |
+| `-13000` | Content-Type `application/rdap+json` | ✓ |
+| `-13006` | `test.invalid` returns 404 | ✓ |
+| `-46200` | Handle format `(\w\|_){1,80}-\w{1,8}` | ✓ |
+| `-46600` | Status Codes notice → `https://icann.org/epp` | ✓ |
+| `-46700` | RDDS Inaccuracy notice → `https://icann.org/wicf` | ✓ |
+| `-46801` | `delegationSigned` in `secureDNS` | ✓ |
+| `-46900` | Status values comply with RFC 5731 | ✓ |
+| `-47300` | Registrar entity in domain | ✓ |
+| `-47500` | Abuse entity with tel + email | ✓ |
+| `-47700` | Registrar entity has `rel="about"` link | ✓ |
+| `-47701` | About link matches IANA-registered registrar base URL | ✓ |
+| `-63000` | Registrar server returns a registrant entity | ✓ |
+| `-65600` | `registrar expiration` event (registrar mode) | ✓ |
+| `-20300` | HEAD status equals GET status | ✓ |
+| `-20100` | HTTPS only (TIG 1.2) | ✓ |
+
+## Production Deployment
+
+### HTTPS
+
+- Serve over HTTPS only (TIG 1.2). Either terminate TLS natively
+  (`server.tls_cert_file`/`tls_key_file`) or at a reverse proxy and forward
+  `X-Forwarded-Proto: https`.
+- If an HTTP listener is exposed, redirect to HTTPS.
+- The link `value` fields auto-detect the scheme, so they always equal the request URL.
+
+### Reverse proxy
+
+Example nginx snippet (terminate TLS, forward headers):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name rdap.example.com;
+    ssl_certificate     /etc/letsencrypt/live/rdap.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rdap.example.com/privkey.pem;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8443;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Forwarded-For $remote_addr;
+    }
+}
+```
+
+### Docker
+
+```bash
+# Build the image
+docker build -t rdap-server .
+
+# Run standalone (in-memory store)
+docker run -p 8443:8443 -p 9090:9090 rdap-server
+
+# Full stack: RDAP server + PostgreSQL + Prometheus + Grafana
+docker-compose up -d
+```
+
+### Monitoring
+
+Prometheus metrics are exposed on the metrics listener (`:9090` by default) at
+`/metrics`. A scrape config is provided in `prometheus.yml`.
+
+### Rate limiting
+
+Per-IP rate limiting (`rate_limiting.requests` per `rate_limiting.window`) with a
+burst allowance. `trusted_ips` are exempt — keep your load balancer / monitoring IPs
+there. Rate-limit headers are exposed:
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+
+### Authentication (optional)
+
+Set `auth.enabled: true` and configure `jwks_endpoint`/`issuer`/`audience` to require
+a valid JWT (Bearer token) on every request. Disabled by default.
+
+## RFC 9537 Redaction (2024 Profile)
+
+The 2024 gTLD Response Profile (§2.7.7/2.7.8, Appendix E) requires a `redacted` array
+whenever registrant/technical personal data is withheld. The 2019-profile `redacted`
+*remarks* element is obsolete under the 2024 profile.
+
+Three methods are defined (RFC 9537):
+
+| Method | Use for | Example |
+|--------|---------|---------|
+| `emptyValue` | blanked `fn`, street, city, postal code | `"fn": [["fn", {}, "text", ""]]` |
+| `replacementValue` | `email` replaced by an anonymized address or a `contact-uri` web form | |
+| `removal` | handle/org/phone/fax removed entirely | |
+
+Each entry carries a `name.type`, a JSONPath (`prePath`/`postPath`/`replacementPath`),
+`pathLang: "jsonpath"`, `method`, and an optional `reason`:
+
+```json
+"redacted": [{
+  "name": {"type": "Registrant Name"},
+  "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='fn')][3]",
+  "pathLang": "jsonpath",
+  "method": "emptyValue",
+  "reason": {"description": "Server policy"}
+}]
+```
+
+### Object ID (handle) requirements
+
+- A domain object must include a `handle` (Registry Domain ID / ROID), **or** omit it
+  and provide a redaction entry of type `Registry Domain ID` with `method: "removal"`
+  and `prePath: "$.handle"`.
+- An entity object must include a `handle` (ROID or registrar contact ID), **or** omit
+  it with the matching redaction entry.
+- Handle suffixes must be repository IDs registered in the
+  [IANA EPP Repository Identifiers registry](https://www.iana.org/assignments/epp-repository-ids/)
+  to pass the EPPROID checks (`-46201`, `-47202`, `-63101`, …).
+
+## Project Structure
+
+```
+├── cmd/
+│   └── rdapd/             # Main entry point (flag parsing, TLS, graceful shutdown)
+├── internal/
+│   ├── auth/              # JWT/Bearer authentication middleware
+│   ├── config/            # YAML configuration + validation
+│   ├── handlers/          # HTTP handlers + RDAP response builders
+│   ├── metrics/           # Prometheus metrics server
+│   ├── middleware/        # Logging, security headers, content-type, rate limiting
+│   ├── rdap/              # RFC 9083 models, notice/conformance builders, helpers
+│   ├── server/            # Chi router, middleware wiring, CORS
+│   └── store/             # Storage interface + memory, postgres & mysql implementations
+├── migrations/            # PostgreSQL (001) and MySQL (002) schemas + seed data
+├── examples/              # Example databases + configs (postgres/ and mysql/)
+├── config.yaml            # Example configuration (registrar mode)
+├── Dockerfile             # Multi-stage Alpine build
+├── docker-compose.yml     # Full stack (Postgres, MySQL, Prometheus, Grafana)
+├── Makefile               # Build, test, lint, docker, migrate targets
+├── prometheus.yml         # Metrics scrape config
+└── go.mod                 # Module: github.com/rdap-server/rdap
+```
+
+## Development
+
+```bash
+make build        # build/rdapd
+make run          # build + run with config.yaml
+make test         # go test -v -race ./...
+make test-cover   # coverage report (coverage.html)
+make lint         # golangci-lint
+make fmt          # gofmt
+make tidy         # go mod tidy && go mod verify
+make docker-build # docker build
+make migrate-up   # apply PostgreSQL migrations
+```
+
+## License
+
+MIT
