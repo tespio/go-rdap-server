@@ -512,13 +512,57 @@ The server is validated against the official
 [ICANN RDAP Conformance Tool](https://icann.github.io/rdap-conformance-tool/)
 (v3.1.0, `rdapct-3.1.0.jar`). Results (queried over HTTPS):
 
-| Test configuration | Groups | Errors |
-|--------------------|-------:|-------:|
-| STD 95 (RFC 9082/9083) | 31 | 0 |
-| gTLD Registrar — 2019 profile | 59 | 0 |
-| gTLD Registrar — 2024 profile | 78 | 0 |
-| gTLD Registry — 2019 profile | 60 | 2* |
-| gTLD Registry — 2024 profile | 78 | 2* |
+<table>
+  <thead>
+    <tr>
+      <th>Test configuration</th>
+      <th align="right">Groups</th>
+      <th align="right">Errors</th>
+      <th align="center">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>STD 95 (RFC 9082/9083)</td>
+      <td align="right">31</td>
+      <td align="right">0</td>
+      <td align="center">✅ Pass</td>
+    </tr>
+    <tr>
+      <td>gTLD Registrar — 2019 profile</td>
+      <td align="right">59</td>
+      <td align="right">0</td>
+      <td align="center">✅ Pass</td>
+    </tr>
+    <tr>
+      <td>gTLD Registrar — 2024 profile</td>
+      <td align="right">78</td>
+      <td align="right">0</td>
+      <td align="center">✅ Pass</td>
+    </tr>
+    <tr>
+      <td>gTLD Registry — 2019 profile</td>
+      <td align="right">60</td>
+      <td align="right">2 <sup>1</sup></td>
+      <td align="center">⚠️ Pass*</td>
+    </tr>
+    <tr>
+      <td>gTLD Registry — 2024 profile</td>
+      <td align="right">78</td>
+      <td align="right">2 <sup>1</sup></td>
+      <td align="center">⚠️ Pass*</td>
+    </tr>
+    <tr>
+      <td colspan="4">
+        <sup>1</sup> Only <code>-23101</code>: the queried TLD's RDAP base URL must be
+        registered in the <a href="https://www.iana.org/domains/rdap">IANA DNS RDAP bootstrap</a>.
+        A production registry must register its real base URL in the bootstrap file (e.g.
+        <code>.com</code> points to Verisign). This is a
+        <strong>registration/data constraint, not a server defect</strong>.
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 > **Automatically verified in CI.** The `Conformance` workflow
 > (`.github/workflows/conformance.yml`) rebuilds the server, starts it with TLS, runs
@@ -526,11 +570,6 @@ The server is validated against the official
 > build if conformance regresses**. Every push/PR confirms **78 groups / 0 errors**
 > before the "we pass ICANN conformance" claim is allowed to stand. See the
 > [Conformance workflow](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml).
-
-\* Only `-23101`: the queried TLD's RDAP base URL must be registered in the
-[IANA DNS RDAP bootstrap](https://www.iana.org/domains/rdap). A production registry
-must register its real base URL in the bootstrap file (e.g. `.com` points to Verisign).
-This is a registration/data constraint, not a server defect.
 
 > **About `registrar_base_url` and `-47701`:** the shipped configs use the placeholder
 > URL `https://rdap.example.org/rdap/` because it is an *example*. The conformance
