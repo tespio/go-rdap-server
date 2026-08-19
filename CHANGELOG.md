@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Set `search_enabled: true` to enable searches.
 - **Search-flag tests** — unit tests cover both enabled (200 + results) and disabled
   (501) behavior, including HEAD parity.
+- **`/help` advertises disabled searches** — when `rdap.search_enabled: false` (the
+  default), the `/help` response includes a "Search Disabled" notice documenting that
+  search queries are unavailable, mirroring how enforced rate limits are advertised.
 
 ## [1.2.0] - 2026-08-19
 

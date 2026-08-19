@@ -98,7 +98,7 @@ func (h *Handler) Help(w http.ResponseWriter, r *http.Request) {
 			Burst:    h.rate.Burst,
 		}
 	}
-	help := rdap.NewHelp(h.cfg.BaseURL, h.noticeOpts(), rateInfo)
+	help := rdap.NewHelp(h.cfg.BaseURL, h.noticeOpts(), rateInfo, rdap.SearchInfo{Enabled: h.cfg.SearchEnabled})
 	writeJSON(w, http.StatusOK, help)
 }
 

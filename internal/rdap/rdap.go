@@ -235,6 +235,13 @@ type RateLimitInfo struct {
 	Burst    int
 }
 
+// SearchInfo documents whether RFC 7482 search endpoints are enabled. The /help
+// endpoint advertises searches when disabled so clients get an explicit signal
+// (the search routes themselves return HTTP 501 Not Implemented).
+type SearchInfo struct {
+	Enabled bool
+}
+
 func NewNotices(baseURL string, opts *NoticeOptions) []Notice {
 	return []Notice{
 		buildToSNotice(baseURL, baseURL, opts),
@@ -341,19 +348,20 @@ func buildToSNotice(requestURL, baseURL string, opts *NoticeOptions) Notice {
 	}
 }
 
-func NewHelp(baseURL string, opts *NoticeOptions, rate RateLimitInfo) Help {
+func NewHelp(baseURL string, opts *NoticeOptions, rate RateLimitInfo, search SearchInfo) Help {
 	return Help{
 		Conformance: NewConformance(),
-		Notices:     NewHelpNotices(baseURL, opts, rate),
+		Notices:     NewHelpNotices(baseURL, opts, rate, search),
 	}
 }
 
 // NewHelpNotices builds the notice set for the /help endpoint. Unlike domain and
 // entity responses, /help is a service-level page, so it uses a generic Terms of
 // Service notice rather than the (possibly registration-data-specific) custom
-// ToS description. Custom registrar notices are still appended, and the current
-// enforced rate limit is documented.
-func NewHelpNotices(baseURL string, opts *NoticeOptions, rate RateLimitInfo) []Notice {
+// ToS description. Custom registrar notices are still appended, the current
+// enforced rate limit is documented, and disabled search endpoints are
+// advertised.
+func NewHelpNotices(baseURL string, opts *NoticeOptions, rate RateLimitInfo, search SearchInfo) []Notice {
 	rateDesc := "Access to this RDAP server is rate-limited. Excessive queries may be throttled."
 	if rate.Enabled {
 		perWindow := rate.Window
@@ -387,6 +395,19 @@ func NewHelpNotices(baseURL string, opts *NoticeOptions, rate RateLimitInfo) []N
 				Type:  "application/rdap+json",
 			}},
 		},
+	}
+
+	if !search.Enabled {
+		notices = append(notices, Notice{
+			Title:       "Search Disabled",
+			Description: []string{"Search queries are not enabled on this RDAP server. Lookup queries (domains, entities, nameservers, IP networks, and autnums) are supported."},
+			Links: []Link{{
+				Value: baseURL,
+				Rel:   "service",
+				Href:  fmt.Sprintf("%s/help", baseURL),
+				Type:  "application/rdap+json",
+			}},
+		})
 	}
 
 	if opts != nil {

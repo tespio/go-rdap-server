@@ -143,7 +143,7 @@ func TestNewHelpNoticesGenericToSAndRateLimits(t *testing.T) {
 		ToSDescription: []string{"Registration data for example.com ..."},
 	}
 	rate := RateLimitInfo{Enabled: true, Requests: 100, Window: time.Minute, Burst: 50}
-	notices := NewHelpNotices("https://rdap.example.com", opts, rate)
+	notices := NewHelpNotices("https://rdap.example.com", opts, rate, SearchInfo{Enabled: true})
 
 	var tosDesc, rateDesc string
 	for _, n := range notices {
@@ -164,6 +164,28 @@ func TestNewHelpNoticesGenericToSAndRateLimits(t *testing.T) {
 	// Rate limit should be documented.
 	if rateDesc == "" || rateDesc == "Access to this RDAP server is rate-limited. Excessive queries may be throttled." {
 		t.Fatalf("help rate-limit notice does not document the limit: %q", rateDesc)
+	}
+}
+
+func TestNewHelpNoticesSearchDisabled(t *testing.T) {
+	// When searches are disabled, /help must advertise that fact.
+	notices := NewHelpNotices("https://rdap.example.com", nil, RateLimitInfo{}, SearchInfo{Enabled: false})
+	found := false
+	for _, n := range notices {
+		if n.Title == "Search Disabled" && len(n.Description) > 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected a 'Search Disabled' notice when searches are off")
+	}
+
+	// When searches are enabled, no such notice.
+	notices = NewHelpNotices("https://rdap.example.com", nil, RateLimitInfo{}, SearchInfo{Enabled: true})
+	for _, n := range notices {
+		if n.Title == "Search Disabled" {
+			t.Fatal("unexpected 'Search Disabled' notice when searches are enabled")
+		}
 	}
 }
 
