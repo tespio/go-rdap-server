@@ -66,6 +66,7 @@ service without the operational overhead.
 - [ICANN Conformance](#icann-conformance)
 - [Production Deployment](#production-deployment)
 - [RFC 9537 Redaction (2024 Profile)](#rfc-9537-redaction-2024-profile)
+- [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Development](#development)
 - [License](#license)
@@ -708,6 +709,45 @@ Each entry carries a `name.type`, a JSONPath (`prePath`/`postPath`/`replacementP
   [IANA EPP Repository Identifiers registry](https://www.iana.org/assignments/epp-repository-ids/)
   to pass the EPPROID checks (`-46201`, `-47202`, `-63101`, …).
 
+## Architecture
+
+The server is layered so that the canonical registry data model is decoupled from
+both storage and the RDAP wire format:
+
+```
+registry data model (internal/domain)   ← canonical, rich (contacts, history, audit,
+        │                                  privacy, DNSSEC, registrar relationships,
+        │                                  source-of-truth metadata)
+        ▼
+query service (internal/service)        ← maps domain aggregates → RDAP output
+        │
+        ▼
+RDAP representation (internal/rdap)     ← pure RFC 9083 output DTOs (no storage)
+        │
+        ▼
+HTTP handlers (internal/handlers)       ← request routing / response wrapping
+```
+
+- **`internal/domain`** — the authoritative registry model: `Domain`, `Contact`,
+  `NameServer`, `IPNetwork`, `Autnum`, `Status`, `Event`, `SecureDNS`, plus
+  `Metadata` (version, source-of-truth timestamps, history, audit) and privacy
+  state. This is the model a real registry maps into.
+- **`internal/service`** — the query/application service. It turns domain
+  aggregates into RDAP objects and is the single seam where a registry can plug in
+  its own model. The RDAP output here is validated against the ICANN conformance
+  tool and is byte-compatible with the previously-passing output.
+- **`internal/rdap`** — only the RFC 9083 wire types (domain, entity, nameserver,
+  ip network, autnum, notices, links, conformance) plus notice/conformance
+  builders. No storage types.
+- **`internal/store`** — storage adapters (`memory`, `postgres`, `mysql`) that
+  produce `domain` objects from the schema. You can keep using the default
+  Postgres/MySQL schema as-is; the layering is purely additive.
+
+The default `storage.driver` + shipped schemas work unchanged — no internal mapping
+is required to just run the server. The `domain`/`service` layers exist so operators
+with a different (richer) registry schema can map their model in without touching
+the RDAP layer.
+
 ## Project Structure
 
 ```
@@ -716,11 +756,13 @@ Each entry carries a `name.type`, a JSONPath (`prePath`/`postPath`/`replacementP
 ├── internal/
 │   ├── auth/              # JWT/Bearer authentication middleware
 │   ├── config/            # YAML configuration + validation
-│   ├── handlers/          # HTTP handlers + RDAP response builders
+│   ├── domain/            # Canonical registry data model (models, vcard, metadata)
+│   ├── handlers/          # HTTP handlers (consume the query service)
 │   ├── metrics/           # Prometheus metrics server
-│   ├── middleware/        # Logging, security headers, content-type, rate limiting
-│   ├── rdap/              # RFC 9083 models, notice/conformance builders, helpers
+│   ├── middleware/        # Logging, security headers, content-type, rate limiting, client IP
+│   ├── rdap/              # RFC 9083 output models + notice/conformance builders
 │   ├── server/            # Chi router, middleware wiring, CORS
+│   ├── service/           # Query service: domain model → RDAP output
 │   └── store/             # Storage interface + memory, postgres & mysql implementations
 ├── migrations/            # PostgreSQL (001) and MySQL (002) schemas + seed data
 ├── examples/              # Example databases + configs (postgres/ and mysql/)

@@ -12,7 +12,11 @@ CREATE TABLE IF NOT EXISTS entities (
     status      JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    public_ids  JSONB NOT NULL DEFAULT '[]'::jsonb
+    public_ids  JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Registry metadata
+    version     BIGINT NOT NULL DEFAULT 1,
+    updated_by  TEXT,
+    source      TEXT DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_entities_handle ON entities (handle);
@@ -26,7 +30,11 @@ CREATE TABLE IF NOT EXISTS nameservers (
     ipv6         JSONB NOT NULL DEFAULT '[]'::jsonb,
     status       JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Registry metadata
+    version      BIGINT NOT NULL DEFAULT 1,
+    updated_by   TEXT,
+    source       TEXT DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_nameservers_ldh_name ON nameservers (ldh_name);
@@ -46,7 +54,11 @@ CREATE TABLE IF NOT EXISTS domains (
     tech         TEXT REFERENCES entities(handle),
     billing      TEXT REFERENCES entities(handle),
     nameservers  JSONB NOT NULL DEFAULT '[]'::jsonb,
-    secure_dns   JSONB
+    secure_dns   JSONB,
+    -- Registry metadata
+    version      BIGINT NOT NULL DEFAULT 1,
+    updated_by   TEXT,
+    source       TEXT DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_domains_ldh_name ON domains (ldh_name);
@@ -75,7 +87,11 @@ CREATE TABLE IF NOT EXISTS ip_networks (
     status        JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    parent_handle TEXT REFERENCES ip_networks(handle)
+    parent_handle TEXT REFERENCES ip_networks(handle),
+    -- Registry metadata
+    version       BIGINT NOT NULL DEFAULT 1,
+    updated_by    TEXT,
+    source        TEXT DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_ip_networks_cidr ON ip_networks USING GIST (cidr);
@@ -90,5 +106,25 @@ CREATE TABLE IF NOT EXISTS autnums (
     country    TEXT,
     status     JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Registry metadata
+    version    BIGINT NOT NULL DEFAULT 1,
+    updated_by TEXT,
+    source     TEXT DEFAULT 'rdap'
 );
+
+-- Registry object history (versioned snapshots for "as-of" queries)
+CREATE TABLE IF NOT EXISTS registry_history (
+    id          BIGSERIAL PRIMARY KEY,
+    object_type TEXT NOT NULL,
+    object_id   TEXT NOT NULL,
+    version     BIGINT NOT NULL,
+    action      TEXT,
+    actor       TEXT,
+    changed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    snapshot    JSONB,
+    UNIQUE (object_type, object_id, version)
+);
+
+CREATE INDEX idx_registry_history_object ON registry_history (object_type, object_id);
+CREATE INDEX idx_registry_history_changed_at ON registry_history (changed_at);

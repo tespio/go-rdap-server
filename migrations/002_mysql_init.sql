@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS domains (
     tech            VARCHAR(80) NULL,
     billing         VARCHAR(80) NULL,
     nameservers     JSON NOT NULL,
-    secure_dns      JSON NULL
+    secure_dns      JSON NULL,
+    -- Registry metadata
+    version         BIGINT NOT NULL DEFAULT 1,
+    updated_by      VARCHAR(255) NULL,
+    source          VARCHAR(64) DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_domains_ldh_name ON domains (ldh_name);
@@ -35,7 +39,11 @@ CREATE TABLE IF NOT EXISTS entities (
     status      JSON NOT NULL,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    public_ids  JSON NOT NULL
+    public_ids  JSON NOT NULL,
+    -- Registry metadata
+    version     BIGINT NOT NULL DEFAULT 1,
+    updated_by  VARCHAR(255) NULL,
+    source      VARCHAR(64) DEFAULT 'rdap'
 );
 
 -- Nameservers table
@@ -47,7 +55,11 @@ CREATE TABLE IF NOT EXISTS nameservers (
     ipv6         JSON,
     status       JSON NOT NULL,
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    -- Registry metadata
+    version      BIGINT NOT NULL DEFAULT 1,
+    updated_by   VARCHAR(255) NULL,
+    source       VARCHAR(64) DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_nameservers_ldh_name ON nameservers (ldh_name);
@@ -82,7 +94,11 @@ CREATE TABLE IF NOT EXISTS ip_networks (
     status        JSON NOT NULL,
     created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    parent_handle VARCHAR(80) NULL REFERENCES ip_networks(handle)
+    parent_handle VARCHAR(80) NULL REFERENCES ip_networks(handle),
+    -- Registry metadata
+    version       BIGINT NOT NULL DEFAULT 1,
+    updated_by    VARCHAR(255) NULL,
+    source        VARCHAR(64) DEFAULT 'rdap'
 );
 
 CREATE INDEX idx_ip_networks_v4 ON ip_networks (ip_version, start_ip, end_ip);
@@ -98,7 +114,11 @@ CREATE TABLE IF NOT EXISTS autnums (
     country    VARCHAR(2),
     status     JSON NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    -- Registry metadata
+    version    BIGINT NOT NULL DEFAULT 1,
+    updated_by VARCHAR(255) NULL,
+    source     VARCHAR(64) DEFAULT 'rdap'
 );
 
 -- Audit log
@@ -112,6 +132,25 @@ CREATE TABLE IF NOT EXISTS audit_log (
     status_code INT NOT NULL,
     duration_ms INT NOT NULL
 );
+
+CREATE INDEX idx_audit_log_timestamp ON audit_log (timestamp);
+CREATE INDEX idx_audit_log_path ON audit_log (path);
+
+-- Registry object history (versioned snapshots for "as-of" queries)
+CREATE TABLE IF NOT EXISTS registry_history (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    object_type VARCHAR(64) NOT NULL,
+    object_id   VARCHAR(255) NOT NULL,
+    version     BIGINT NOT NULL,
+    action      VARCHAR(64),
+    actor       VARCHAR(255),
+    changed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    snapshot    JSON NULL,
+    UNIQUE KEY uq_registry_history (object_type, object_id, version)
+);
+
+CREATE INDEX idx_registry_history_object ON registry_history (object_type, object_id);
+CREATE INDEX idx_registry_history_changed_at ON registry_history (changed_at);
 
 CREATE INDEX idx_audit_log_timestamp ON audit_log (timestamp);
 CREATE INDEX idx_audit_log_path ON audit_log (path);
