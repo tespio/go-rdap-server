@@ -40,3 +40,43 @@ jobs:
           name: coverage
           path: coverage.out
           if-no-files-found: error
+
+  # Applies migrations/001_init.sql against a FRESH PostgreSQL instance to catch
+  # migration regressions (FK ordering, index portability, syntax) that would only
+  # surface on a brand-new deployment.
+  migration-postgres:
+    name: Migration applies on fresh PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rdap
+          POSTGRES_USER: rdap
+          POSTGRES_PASSWORD: rdap
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rdap -d rdap"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply migration to fresh DB
+        run: >
+          psql -h localhost -U rdap -d rdap -v ON_ERROR_STOP=1 -f migrations/001_init.sql
+        env:
+          PGPASSWORD: rdap
+
+      - name: Verify schema and seed present
+        run: |
+          set -e
+          psql -h localhost -U rdap -d rdap -v ON_ERROR_STOP=1 -c \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('domains','entities','nameservers','ip_networks','autnums','registry_history');"
+          psql -h localhost -U rdap -d rdap -v ON_ERROR_STOP=1 -c \
+            "SELECT ldh_name FROM domains WHERE handle='EX1-NAME';"
+        env:
+          PGPASSWORD: rdap
