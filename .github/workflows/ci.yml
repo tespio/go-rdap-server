@@ -80,3 +80,41 @@ jobs:
             "SELECT ldh_name FROM domains WHERE handle='EX1-NAME';"
         env:
           PGPASSWORD: rdap
+
+  # Applies migrations/002_mysql_init.sql against a FRESH MySQL 8 instance to catch
+  # migration regressions that would only surface on a brand-new deployment.
+  migration-mysql:
+    name: Migration applies on fresh MySQL 8
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: rdap
+          MYSQL_USER: rdap
+          MYSQL_PASSWORD: rdap
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -uroot -proot --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply migration to fresh DB
+        run: |
+          set -e
+          # 002_mysql_init.sql creates/uses the rdap database itself.
+          mysql -h localhost -P 3306 -uroot -proot < migrations/002_mysql_init.sql
+
+      - name: Verify schema and seed present
+        run: |
+          set -e
+          mysql -h localhost -P 3306 -uroot -proot -e \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='rdap' AND table_name IN ('domains','entities','nameservers','ip_networks','autnums','registry_history');"
+          mysql -h localhost -P 3306 -uroot -proot rdap -e \
+            "SELECT ldh_name FROM domains WHERE handle='EX1-NAME';"

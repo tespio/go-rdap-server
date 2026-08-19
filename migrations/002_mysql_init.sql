@@ -152,9 +152,6 @@ CREATE TABLE IF NOT EXISTS registry_history (
 CREATE INDEX idx_registry_history_object ON registry_history (object_type, object_id);
 CREATE INDEX idx_registry_history_changed_at ON registry_history (changed_at);
 
-CREATE INDEX idx_audit_log_timestamp ON audit_log (timestamp);
-CREATE INDEX idx_audit_log_path ON audit_log (path);
-
 -- Seed data for testing (handles use the <local>-<EPPROID> ROID form)
 INSERT INTO entities (handle, roles, status) VALUES
     ('2', '["registrar"]', '["active"]'),
