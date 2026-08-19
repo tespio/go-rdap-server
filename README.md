@@ -25,8 +25,8 @@ operate as either a **gTLD registry** or a **gTLD registrar** RDAP service.
 ## Why this exists
 
 Most off-the-shelf RDAP stacks are heavyweight Java applications that are hard to
-operate, tune, and keep current with the [2024 gTLD Response Profile](https://www.icann.org/resources/pages/rdap-2024-01-16-en)
-and its [RFC 9537 redaction rules](README.md#rfc-9537-redaction-2024-profile). This project
+operate, tune, and keep current with the [gTLD RDAP Profile (Feb 2024)](https://www.icann.org/en/contracted-parties/registry-operators/registration-data-access-protocol/gtld-rdap-profile-01-01-2020-en)
+and its [RFC 9537 redaction rules](https://www.rfc-editor.org/rfc/rfc9537). This project
 is a small, single-binary Go alternative: no JVM, no application server, fast startup,
 static binaries for every major OS/arch, and a tiny memory footprint — while still
 passing the official conformance suite for both registrar and registry operator modes.
@@ -647,11 +647,13 @@ a valid JWT (Bearer token) on every request. Disabled by default.
 
 ## RFC 9537 Redaction (2024 Profile)
 
-The 2024 gTLD Response Profile (§2.7.7/2.7.8, Appendix E) requires a `redacted` array
-whenever registrant/technical personal data is withheld. The 2019-profile `redacted`
-*remarks* element is obsolete under the 2024 profile.
+The [2024 gTLD Response Profile](https://www.icann.org/en/contracted-parties/registry-operators/registration-data-access-protocol/gtld-rdap-profile-01-01-2020-en)
+(§2.7.7/2.7.8, Appendix E) requires a `redacted` array whenever registrant/technical
+personal data is withheld. The 2019-profile `redacted` *remarks* element is obsolete
+under the 2024 profile.
 
-Three methods are defined (RFC 9537):
+The redaction extension itself is defined in [RFC 9537](https://www.rfc-editor.org/rfc/rfc9537).
+Three methods are defined:
 
 | Method | Use for | Example |
 |--------|---------|---------|
