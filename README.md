@@ -2,6 +2,7 @@
 
 [![Go version](https://img.shields.io/badge/Go-1.22+-blue?logo=go&logoColor=white)](https://go.dev/dl)
 [![CI](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/ci.yml?branch=master&label=CI&logo=github)](https://github.com/tespio/go-rdap-server/actions)
+[![ICANN Conformance](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/conformance.yml?branch=master&label=ICANN%20RDAPCT%20CI&logo=github)](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml)
 [![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/Coverage-6.7%25-critical?logo=codecov&logoColor=white)](#testing--coverage)
@@ -516,6 +517,13 @@ The server is validated against the official
 | gTLD Registrar — 2024 profile | 78 | 0 |
 | gTLD Registry — 2019 profile | 60 | 2* |
 | gTLD Registry — 2024 profile | 78 | 2* |
+
+> **Automatically verified in CI.** The `Conformance` workflow
+> (`.github/workflows/conformance.yml`) rebuilds the server, starts it with TLS, runs
+> the official rdapct against it (gTLD Registrar, **2024 profile**), and **fails the
+> build if conformance regresses**. Every push/PR confirms **78 groups / 0 errors**
+> before the "we pass ICANN conformance" claim is allowed to stand. See the
+> [Conformance workflow](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml).
 
 \* Only `-23101`: the queried TLD's RDAP base URL must be registered in the
 [IANA DNS RDAP bootstrap](https://www.iana.org/domains/rdap). A production registry
