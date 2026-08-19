@@ -46,7 +46,7 @@ service without the operational overhead.
 - **DNSSEC** — `secureDNS` with DS records and `delegationSigned`.
 - **jCard vCards** — RFC 6350/7095 JSON vCard contact data for entities.
 - **Dual storage backends** — in-memory (development), PostgreSQL, and MySQL (production).
-- **Rate limiting** — per-IP, configurable window and burst.
+- **Rate limiting** — per-IP, configurable window and burst, with trusted-proxy client-IP resolution (spoof-proof).
 - **Optional authentication** — JWT/Bearer token via JWKS.
 - **Prometheus metrics** — built-in `/metrics`-style endpoint.
 - **CORS + security headers** — ready for browser clients.
@@ -173,7 +173,10 @@ rate_limiting:
   requests: 100             # per IP per window
   window: 1m
   burst: 50
-  trusted_ips: ["127.0.0.1", "10.0.0.0/8", "192.168.0.0/16"]  # exempt from limits
+  # trusted_ips = the ONLY sources allowed to set X-Forwarded-For / X-Real-IP.
+  # Requests from any other peer are rate-limited by their real socket IP and
+  # their forwarded headers are ignored. Set to your proxy/LB addresses only.
+  trusted_ips: ["127.0.0.1", "10.0.0.0/8", "192.168.0.0/16"]
 ```
 
 | Key | Default | Description |
@@ -195,6 +198,7 @@ rate_limiting:
 | `auth.enabled` | `false` | Enable JWT authentication |
 | `metrics.enabled` | `true` | Enable the Prometheus metrics endpoint |
 | `rate_limiting.enabled` | `true` | Enable per-IP rate limiting |
+| `rate_limiting.trusted_ips` | *(empty)* | Addresses/CIDRs allowed to set `X-Forwarded-For`/`X-Real-IP` (your proxies). All other peers are limited by their real socket IP. |
 
 ## API Endpoints
 
@@ -615,6 +619,12 @@ server {
 }
 ```
 
+> **Important:** because this forwards `X-Forwarded-For`, the nginx host's address
+> must be in `rate_limiting.trusted_ips` (see [Rate limiting](#rate-limiting)).
+> If you proxy directly with `127.0.0.1`, add `127.0.0.1`; if nginx runs on a
+> dedicated host/LB, add that host's IP or subnet. Only trusted proxies may set
+> forwarded headers.
+
 ### Docker
 
 ```bash
@@ -636,9 +646,22 @@ Prometheus metrics are exposed on the metrics listener (`:9090` by default) at
 ### Rate limiting
 
 Per-IP rate limiting (`rate_limiting.requests` per `rate_limiting.window`) with a
-burst allowance. `trusted_ips` are exempt — keep your load balancer / monitoring IPs
-there. Rate-limit headers are exposed:
+burst allowance. Rate-limit headers are exposed:
 `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+
+**Client IP resolution behind a proxy (important):** the server only honors
+`X-Forwarded-For` / `X-Real-IP` when the *direct network peer* is listed in
+`rate_limiting.trusted_ips`. For any other peer those headers are ignored and the
+real socket address is used for both rate limiting and logging. This prevents an
+Internet client from spoofing its IP via headers to bypass per-IP limits.
+
+- Put **only** your reverse proxy / load balancer addresses in `trusted_ips`.
+- Do **not** include public/internet ranges (e.g. `0.0.0.0/0`) — that would let
+  anyone spoof forwarded headers.
+- When running without a proxy, you can leave `trusted_ips` empty (or only
+  `127.0.0.1`); all forwarded headers are then ignored.
+- The nginx example below forwards `X-Forwarded-For`, so make sure the nginx
+  host's IP (or the subnet it sits in) is in `trusted_ips`.
 
 ### Authentication (optional)
 

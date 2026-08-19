@@ -27,11 +27,14 @@ func New(cfg *config.Config, store store.Interface, logger *zap.Logger) *Server 
 
 	// Global middleware
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
+	r.Use(chimw.Compress(5))
+	// Client IP resolution must run BEFORE rate limiting. It only trusts
+	// X-Forwarded-For / X-Real-IP when the direct peer is a trusted proxy,
+	// preventing clients from spoofing their IP to bypass rate limits.
+	r.Use(middleware.TrustedProxyClientIP(cfg.Rate.TrustedIPs))
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Timeout(30 * time.Second))
-	r.Use(chimw.Compress(5))
 
 	// CORS
 	r.Use(cors.Handler(cors.Options{

@@ -70,6 +70,11 @@ rate_limiting:
   requests: 100
   window: 1m
   burst: 50
+  # trusted_ips are the ONLY sources allowed to set X-Forwarded-For / X-Real-IP.
+  # Requests whose direct network peer is NOT in this list are rate-limited (and
+  # logged) by their real socket IP, and any forwarded headers are ignored.
+  # Set this to your reverse proxy / load balancer addresses only. Do NOT trust
+  # public/internet ranges here, or clients could spoof their IP to bypass limits.
   trusted_ips:
     - "127.0.0.1"
     - "10.0.0.0/8"
