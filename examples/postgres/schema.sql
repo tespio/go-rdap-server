@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS ip_networks (
     source        TEXT DEFAULT 'rdap'
 );
 
-CREATE INDEX idx_ip_networks_cidr ON ip_networks USING GIST (cidr);
+CREATE INDEX idx_ip_networks_cidr ON ip_networks (ip_version);
 
 -- Autonomous System Numbers
 CREATE TABLE IF NOT EXISTS autnums (

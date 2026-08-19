@@ -3,6 +3,25 @@
 
 BEGIN;
 
+-- Entities table (registrars, registrants, contacts)
+-- Created before domains because domains has foreign-key references to
+-- entities(handle).
+CREATE TABLE IF NOT EXISTS entities (
+    handle      TEXT PRIMARY KEY,
+    vcard_json  TEXT,
+    roles       JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status      JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    public_ids  JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Registry metadata
+    version     BIGINT NOT NULL DEFAULT 1,
+    updated_by  TEXT,
+    source      TEXT DEFAULT 'rdap'
+);
+
+CREATE INDEX idx_entities_handle ON entities (handle);
+
 -- Domains table
 CREATE TABLE IF NOT EXISTS domains (
     handle          TEXT PRIMARY KEY,
@@ -28,23 +47,6 @@ CREATE TABLE IF NOT EXISTS domains (
 CREATE INDEX idx_domains_ldh_name ON domains (ldh_name);
 CREATE INDEX idx_domains_tld ON domains (tld);
 CREATE INDEX idx_domains_expires_at ON domains (expires_at);
-
--- Entities table (registrars, registrants, contacts)
-CREATE TABLE IF NOT EXISTS entities (
-    handle      TEXT PRIMARY KEY,
-    vcard_json  TEXT,
-    roles       JSONB NOT NULL DEFAULT '[]'::jsonb,
-    status      JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    public_ids  JSONB NOT NULL DEFAULT '[]'::jsonb,
-    -- Registry metadata
-    version     BIGINT NOT NULL DEFAULT 1,
-    updated_by  TEXT,
-    source      TEXT DEFAULT 'rdap'
-);
-
-CREATE INDEX idx_entities_handle ON entities (handle);
 
 -- Nameservers table
 CREATE TABLE IF NOT EXISTS nameservers (
@@ -93,7 +95,7 @@ CREATE TABLE IF NOT EXISTS ip_networks (
     source        TEXT DEFAULT 'rdap'
 );
 
-CREATE INDEX idx_ip_networks_cidr ON ip_networks USING GIST (cidr);
+CREATE INDEX idx_ip_networks_cidr ON ip_networks (ip_version);
 
 -- Autonomous System Numbers
 CREATE TABLE IF NOT EXISTS autnums (

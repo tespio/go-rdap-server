@@ -20,6 +20,9 @@ coverage.*
 # Local conformance tooling (JAR, IANA datasets, results, TLS keys/truststore)
 .rdapct/
 
+# Local portable PostgreSQL instance (binaries + data dir)
+.pg/
+
 # TLS material and credentials (never commit)
 *.key
 *.p12
