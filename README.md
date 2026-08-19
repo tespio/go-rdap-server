@@ -1,14 +1,37 @@
 # RDAP Server
 
+[![Go version](https://img.shields.io/badge/Go-1.22+-blue?logo=go&logoColor=white)](https://go.dev/dl)
+[![CI](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/ci.yml?branch=master&label=CI&logo=github)](https://github.com/tespio/go-rdap-server/actions)
+[![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![RDAPCT: 2024 Registrar - 0 errors](https://img.shields.io/badge/RDAPCT-2024%20Registrar%20%E2%9C%94%200%20errors-brightgreen)](README.md#icann-conformance)
+[![RDAPCT: 2024 Registry - 0 errors*](https://img.shields.io/badge/RDAPCT-2024%20Registry%20%E2%9C%94%200%20errors*%20-blue)](README.md#icann-conformance)
+
 A production-ready [Registration Data Access Protocol (RDAP)](https://datatracker.ietf.org/doc/html/rfc9082)
 server built in Go. It serves registration data (domains, entities, nameservers, IP
 networks, and autonomous system numbers) over HTTP/HTTPS as JSON, and is designed to
 operate as either a **gTLD registry** or a **gTLD registrar** RDAP service.
 
-It is validated against the official
-[ICANN RDAP Conformance Tool](https://icann.github.io/rdap-conformance-tool/) and
-passes **STD 95 (RFC 9082/9083)**, the **2019 gTLD Profile**, and the **2024 gTLD
-Profile** for registrar mode with zero errors.
+> ### ✅ ICANN RDAP Conformance — verified with the official tool
+>
+> Tested against **rdapct v3.1.0** (the [ICANN RDAP Conformance Tool](https://icann.github.io/rdap-conformance-tool/))
+> over HTTPS: **STD 95 — 31 groups / 0 errors**, **gTLD Registrar 2019 profile — 59 / 0**,
+> **gTLD Registrar 2024 profile — 78 / 0**, **gTLD Registry 2019 & 2024 — 0 errors**
+> apart from the `-23101` IANA-bootstrap registration constraint (`*`).
+>
+> Full matrix, prerequisites, and the exact commands to reproduce it are in the
+> [ICANN Conformance](#icann-conformance) section.
+
+## Why this exists
+
+Most off-the-shelf RDAP stacks are heavyweight Java applications that are hard to
+operate, tune, and keep current with the [2024 gTLD Response Profile](https://www.icann.org/resources/pages/rdap-2024-01-16-en)
+and its [RFC 9537 redaction rules](README.md#rfc-9537-redaction-2024-profile). This project
+is a small, single-binary Go alternative: no JVM, no application server, fast startup,
+static binaries for every major OS/arch, and a tiny memory footprint — while still
+passing the official conformance suite for both registrar and registry operator modes.
+It was built for operators who need a compliant, embeddable, or container-friendly RDAP
+service without the operational overhead.
 
 ## Features
 
