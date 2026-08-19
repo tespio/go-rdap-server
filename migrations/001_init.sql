@@ -125,7 +125,7 @@ VALUES (
     'example.com',
     'example.com',
     'com',
-    '["associated"]',
+    '["active"]',
     NOW() + INTERVAL '1 year',
     '2',
     '888',

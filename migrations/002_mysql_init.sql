@@ -134,7 +134,7 @@ VALUES (
     'example.com',
     'example.com',
     'com',
-    '["associated"]',
+    '["active"]',
     DATE_ADD(NOW(), INTERVAL 1 YEAR),
     '2',
     '888',

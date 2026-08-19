@@ -100,7 +100,7 @@ func (s *MemoryStore) seed() {
 		LDHName:     "example.com",
 		UnicodeName: "example.com",
 		TLD:         "com",
-		Status:      []string{"associated"},
+		Status:      []string{"active"},
 		CreatedAt:   now.Add(-365 * 24 * time.Hour),
 		UpdatedAt:   now,
 		ExpiresAt:   now.Add(365 * 24 * time.Hour),

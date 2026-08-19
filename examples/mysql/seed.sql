@@ -81,31 +81,31 @@ ON DUPLICATE KEY UPDATE handle = VALUES(handle);
 -- ---------------------------------------------------------------------------
 INSERT INTO domains (handle, ldh_name, unicode_name, tld, status, expires_at, registrant, admin, tech, nameservers, secure_dns) VALUES
     (
-        'EX1-NAME', 'example.com', 'example.com', 'com', '["associated"]',
+        'EX1-NAME', 'example.com', 'example.com', 'com', '["active"]',
         DATE_ADD(NOW(), INTERVAL 1 YEAR), 'REG1-NAME', '888', '888',
         '[{"handle":"NS1-NAME","ldhName":"ns1.example.com","unicodeName":"ns1.example.com","ipv4":["8.8.8.8"],"ipv6":["2001:4860:4860::8888"],"status":["associated"]},{"handle":"NS2-NAME","ldhName":"ns2.example.com","unicodeName":"ns2.example.com","ipv4":["1.1.1.1"],"ipv6":["2606:4700:4700::1111"],"status":["associated"]}]',
         '{"zoneSigned":false,"delegationSigned":false}'
     ),
     (
-        'EX2-NAME', 'example.net', 'example.net', 'net', '["associated"]',
+        'EX2-NAME', 'example.net', 'example.net', 'net', '["active"]',
         DATE_ADD(NOW(), INTERVAL 2 YEAR), 'REG2-NAME', '888', '888',
         '[{"handle":"NS3-NAME","ldhName":"ns3.example.net","unicodeName":"ns3.example.net","ipv4":["8.8.4.4"],"ipv6":["2001:4860:4860::8844"],"status":["associated"]},{"handle":"NS4-NAME","ldhName":"ns4.example.net","unicodeName":"ns4.example.net","ipv4":["1.0.0.1"],"ipv6":["2606:4700:4700::1001"],"status":["associated"]}]',
         '{"zoneSigned":true,"delegationSigned":true,"maxSigLife":86400,"dsData":[{"keyTag":12345,"algorithm":13,"digestType":2,"digest":"6FD88D0A1C9E4B8B7E9A8C9B1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0"}]}'
     ),
     (
-        'EX3-NAME', 'example.org', 'example.org', 'org', '["associated"]',
+        'EX3-NAME', 'example.org', 'example.org', 'org', '["active"]',
         DATE_ADD(NOW(), INTERVAL 3 YEAR), 'REG3-NAME', '888', '888',
         '[{"handle":"NS1-NAME","ldhName":"ns1.example.com","unicodeName":"ns1.example.com","ipv4":["8.8.8.8"],"ipv6":["2001:4860:4860::8888"],"status":["associated"]},{"handle":"NS3-NAME","ldhName":"ns3.example.net","unicodeName":"ns3.example.net","ipv4":["8.8.4.4"],"ipv6":["2001:4860:4860::8844"],"status":["associated"]}]',
         '{"zoneSigned":false,"delegationSigned":false}'
     ),
     (
-        'EX4-NAME', 'xn--bcher-kva.com', 'bücher.com', 'com', '["associated"]',
+        'EX4-NAME', 'xn--bcher-kva.com', 'bücher.com', 'com', '["active"]',
         DATE_ADD(NOW(), INTERVAL 1 YEAR), 'REG4-NAME', '888', '888',
         '[{"handle":"NS1-NAME","ldhName":"ns1.example.com","unicodeName":"ns1.example.com","ipv4":["8.8.8.8"],"ipv6":["2001:4860:4860::8888"],"status":["associated"]},{"handle":"NS2-NAME","ldhName":"ns2.example.com","unicodeName":"ns2.example.com","ipv4":["1.1.1.1"],"ipv6":["2606:4700:4700::1111"],"status":["associated"]}]',
         '{"zoneSigned":false,"delegationSigned":false}'
     ),
     (
-        'EX5-NAME', 'example.info', 'example.info', 'info', '["associated"]',
+        'EX5-NAME', 'example.info', 'example.info', 'info', '["active"]',
         DATE_ADD(NOW(), INTERVAL 1 YEAR), 'REG5-NAME', '888', '888',
         '[{"handle":"NS2-NAME","ldhName":"ns2.example.com","unicodeName":"ns2.example.com","ipv4":["1.1.1.1"],"ipv6":["2606:4700:4700::1111"],"status":["associated"]},{"handle":"NS4-NAME","ldhName":"ns4.example.net","unicodeName":"ns4.example.net","ipv4":["1.0.0.1"],"ipv6":["2606:4700:4700::1001"],"status":["associated"]}]',
         '{"zoneSigned":false,"delegationSigned":false}'

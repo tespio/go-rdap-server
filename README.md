@@ -256,7 +256,7 @@ curl "http://localhost:8443/nameservers?ip=8.8.8.8"
   "handle": "EX1-NAME",
   "ldhName": "example.com",
   "unicodeName": "example.com",
-  "status": ["associated"],
+  "status": ["active"],
   "events": [
     {"eventAction": "registration", "eventDate": "2025-08-18T20:00:00Z"},
     {"eventAction": "last changed", "eventDate": "2026-08-18T20:00:00Z"},
@@ -393,7 +393,7 @@ The default `memory` store is seeded with sample data:
 
 | Type | Handle / key | Notes |
 |------|--------------|-------|
-| Domain | `EX1-NAME` (`example.com`) | status `["associated"]`, registrar `2`, tech `888` |
+| Domain | `EX1-NAME` (`example.com`) | status `["active"]`, registrar `2`, tech `888` |
 | Registrar entity | `2` | IANA Registrar ID 2 (Network Solutions sample) |
 | Technical entity | `888` | |
 | Nameservers | `NS1-NAME`, `NS2-NAME` | `ns1.example.com`, `ns2.example.com` |
