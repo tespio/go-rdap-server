@@ -209,8 +209,8 @@ type IPNetwork struct {
 // Autnum is a registry autonomous system number.
 type Autnum struct {
 	Handle     string   `json:"handle"`
-	StartASN   int      `json:"start_asn"`
-	EndASN     int      `json:"end_asn"`
+	StartASN   uint32   `json:"start_asn"`
+	EndASN     uint32   `json:"end_asn"`
 	Name       string   `json:"name,omitempty"`
 	Type       string   `json:"type,omitempty"`
 	Country    string   `json:"country,omitempty"`

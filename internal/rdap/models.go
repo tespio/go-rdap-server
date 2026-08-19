@@ -185,8 +185,8 @@ type AutnumResponse struct {
 
 type Autnum struct {
 	Common
-	StartAutnum int      `json:"startAutnum,omitempty"`
-	EndAutnum   int      `json:"endAutnum,omitempty"`
+	StartAutnum uint32   `json:"startAutnum,omitempty"`
+	EndAutnum   uint32   `json:"endAutnum,omitempty"`
 	Name        string   `json:"name,omitempty"`
 	Type        string   `json:"type,omitempty"`
 	Country     string   `json:"country,omitempty"`

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	"net/netip"
@@ -204,23 +203,19 @@ func (h *Handler) LookupAutnum(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, 400, "Invalid ASN", "ASN must be a valid 32-bit unsigned integer")
 		return
 	}
-	// ASNs are stored as int; reject values that would overflow the platform's int
-	// type (relevant on 32-bit builds where int.MaxInt < uint32.MaxValue).
-	if asn > uint64(math.MaxInt) {
-		writeError(w, http.StatusBadRequest, 400, "Invalid ASN", "ASN is out of range for this platform")
-		return
-	}
+	// asn is guaranteed to fit in uint32 by the bitSize=32 parse above.
+	asn32 := uint32(asn)
 
 	resp := rdap.AutnumResponse{
 		Autnum: rdap.Autnum{
 			Common: rdap.Common{
 				ObjectClassName: "autnum",
-				Handle:          fmt.Sprintf("AS%d", asn),
+				Handle:          fmt.Sprintf("AS%d", asn32),
 				Status:          []string{"active"},
 			},
-			StartAutnum: int(asn),
-			EndAutnum:   int(asn),
-			Name:        fmt.Sprintf("AS%d", asn),
+			StartAutnum: asn32,
+			EndAutnum:   asn32,
+			Name:        fmt.Sprintf("AS%d", asn32),
 		},
 		Conformance: rdap.NewConformance(),
 		Notices:     rdap.NewNoticesWithICANN(h.requestURL(r), h.cfg.BaseURL, h.noticeOpts()),
