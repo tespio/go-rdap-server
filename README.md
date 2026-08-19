@@ -748,6 +748,17 @@ is required to just run the server. The `domain`/`service` layers exist so opera
 with a different (richer) registry schema can map their model in without touching
 the RDAP layer.
 
+**Want concrete examples?** See the
+[Architecture & Extension Guide](docs/ARCHITECTURE.md) — it walks through four
+real usage scenarios:
+
+| Scenario | You want to... | What you touch |
+|----------|----------------|----------------|
+| **A** "Just run it" | Serve RDAP over the shipped schema | nothing |
+| **B** "My DB differs" | Point the server at your existing database | `store` (views or interface) |
+| **C** "Richer model" | Keep history/privacy/audit that RDAP doesn't show | `domain` (already modeled) |
+| **D** "Custom output" | Adjust the RDAP response | `service` (single place) |
+
 ## Project Structure
 
 ```
@@ -766,6 +777,7 @@ the RDAP layer.
 │   └── store/             # Storage interface + memory, postgres & mysql implementations
 ├── migrations/            # PostgreSQL (001) and MySQL (002) schemas + seed data
 ├── examples/              # Example databases + configs (postgres/ and mysql/)
+├── docs/                  # Guides (ARCHITECTURE.md: layering + usage scenarios)
 ├── config.yaml            # Example configuration (registrar mode)
 ├── Dockerfile             # Multi-stage Alpine build
 ├── docker-compose.yml     # Full stack (Postgres, MySQL, Prometheus, Grafana)
