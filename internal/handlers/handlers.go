@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/netip"
@@ -201,6 +202,12 @@ func (h *Handler) LookupAutnum(w http.ResponseWriter, r *http.Request) {
 	asn, err := strconv.ParseUint(asnStr, 10, 32)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, 400, "Invalid ASN", "ASN must be a valid 32-bit unsigned integer")
+		return
+	}
+	// ASNs are stored as int; reject values that would overflow the platform's int
+	// type (relevant on 32-bit builds where int.MaxInt < uint32.MaxValue).
+	if asn > uint64(math.MaxInt) {
+		writeError(w, http.StatusBadRequest, 400, "Invalid ASN", "ASN is out of range for this platform")
 		return
 	}
 
