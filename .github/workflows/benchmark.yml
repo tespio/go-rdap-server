@@ -1,0 +1,97 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Records a synthetic load benchmark (throughput, latency, memory, CPU) and
+  # uploads the CSV + charts as artifacts. Informational only — it does not gate
+  # the build, since shared runners have variable performance.
+  load:
+    name: Load benchmark
+    runs-on: ubuntu-latest
+    env:
+      DURATION: "8"
+      CONCURRENCY: "1,10,25,50,100,200"
+      BENCH_URL: "http://localhost:8443/domain/example.com"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install hey load generator
+        run: go install github.com/rakyll/hey@latest
+
+      - name: Set up Python + matplotlib (charts)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet matplotlib
+
+      - name: Build RDAP server
+        run: go build -o rdapd ./cmd/rdapd
+
+      - name: Write benchmark config (rate limiting off)
+        run: |
+          cat > config-bench.yaml <<'EOF'
+          server:
+            host: "0.0.0.0"
+            port: 8443
+          storage:
+            driver: "memory"
+          rdap:
+            mode: "registrar"
+            tlds: ["com", "net", "org"]
+            base_url: "http://localhost:8443"
+            registrar_base_url: "https://rdap.example.org/rdap/"
+            max_search_limit: 100
+            server_name: "RDAP Server (benchmark)"
+            version: "1.2.0"
+          metrics:
+            enabled: false
+          rate_limiting:
+            enabled: false
+          EOF
+
+      - name: Start RDAP server (background)
+        run: |
+          set -euo pipefail
+          ./rdapd -config config-bench.yaml > rdapd-bench.log 2>&1 &
+          echo "rdapd_pid=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 20); do
+            if curl -sf "$BENCH_URL" >/dev/null 2>&1; then echo "server up"; exit 0; fi
+            sleep 1
+          done
+          cat rdapd-bench.log >&2 || true
+          exit 1
+
+      - name: Run load benchmark
+        run: |
+          chmod +x benchmarks/run-bench.sh
+          HEY="$HOME/go/bin/hey" ./benchmarks/run-bench.sh \
+            "$BENCH_URL" "$DURATION" "$CONCURRENCY" "benchmarks/results"
+
+      - name: Generate charts
+        run: python benchmarks/chart.py benchmarks/results/summary.csv
+
+      - name: Upload benchmark results (CSV + charts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results/
+          if-no-files-found: error
+
+      - name: Stop RDAP server
+        if: always()
+        run: kill "${rdapd_pid:-0}" 2>/dev/null || true

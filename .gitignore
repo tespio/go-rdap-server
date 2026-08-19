@@ -23,6 +23,9 @@ coverage.*
 # Local portable PostgreSQL instance (binaries + data dir)
 .pg/
 
+# Generated benchmark results (CSV + charts)
+benchmarks/results/
+
 # TLS material and credentials (never commit)
 *.key
 *.p12

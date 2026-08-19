@@ -1,0 +1,37 @@
+server:
+  host: "0.0.0.0"
+  port: 8443
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  max_header_bytes: 1048576
+
+storage:
+  driver: "memory"
+
+rdap:
+  mode: "registrar"
+  tlds: ["com", "net", "org"]
+  base_url: "http://localhost:8443"
+  registrar_base_url: "https://rdap.example.org/rdap/"
+  max_domain_length: 253
+  max_search_limit: 100
+  port43_whois: "whois.example.com"
+  server_name: "RDAP Server (benchmark)"
+  version: "1.2.0"
+
+auth:
+  enabled: false
+
+metrics:
+  enabled: false
+
+# Rate limiting DISABLED so the benchmark measures raw throughput/scalability,
+# not the (intentional) rate-limit throttle.
+rate_limiting:
+  enabled: false
+  requests: 1000000
+  window: 1m
+  burst: 100000
+  trusted_ips:
+    - "127.0.0.1"
