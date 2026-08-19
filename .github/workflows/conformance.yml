@@ -50,9 +50,11 @@ jobs:
             -days 1 -subj "/CN=127.0.0.1.nip.io" \
             -addext "subjectAltName=DNS:127.0.0.1.nip.io,DNS:*.nip.io,IP:127.0.0.1"
           # Build a truststore: start from the JDK cacerts and add our self-signed
-          # cert so rdapct can validate the TLS connection.
+          # cert so rdapct can validate the TLS connection. The source cacerts is
+          # read-only, so chmod the copy writable before keytool adds to it.
           JDK_HOME="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
           cp "$JDK_HOME/lib/security/cacerts" .rdapct-ci/tls/combined.jks
+          chmod u+w .rdapct-ci/tls/combined.jks
           keytool -importcert -noprompt -alias rdap-selfsigned \
             -file .rdapct-ci/tls/tls.crt \
             -keystore .rdapct-ci/tls/combined.jks -storepass changeit

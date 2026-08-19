@@ -134,7 +134,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX idx_audit_log_timestamp ON audit_log (timestamp);
-CREATE INDEX idx_audit_log_path ON audit_log (path);
+-- path is VARCHAR(1024); use a prefix index so the key stays under MySQL's
+-- 3072-byte utf8mb4 limit.
+CREATE INDEX idx_audit_log_path ON audit_log (path(255));
 
 -- Registry object history (versioned snapshots for "as-of" queries)
 CREATE TABLE IF NOT EXISTS registry_history (
