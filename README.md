@@ -71,6 +71,7 @@ service without the operational overhead.
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Testing & Coverage](#testing--coverage)
+- [Performance Benchmarks](benchmarks/README.md)
 - [Development](#development)
 - [License](#license)
 - [Changelog](CHANGELOG.md)
@@ -858,6 +859,14 @@ RDAP_TEST_DSN="postgres://rdap:rdap@localhost:5432/rdap?sslmode=disable" \
 
 To report coverage to Codecov, enable Codecov for this repo and add the token as a
 `CODECOV_TOKEN` secret; the CI workflow can then upload `coverage.out`.
+
+## Performance Benchmarks
+
+Synthetic load benchmarks (throughput, latency, memory, CPU) run automatically
+in CI via the `Benchmark` workflow. Latest results on GitHub Actions: **~15,800
+req/s at 200 connections with 0 errors and a ~33 MB working set**. Charts,
+methodology, and reproduction steps are in
+[`benchmarks/README.md`](benchmarks/README.md).
 
 ## Development
 
