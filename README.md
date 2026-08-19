@@ -5,7 +5,7 @@
 [![ICANN Conformance](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/conformance.yml?branch=master&label=ICANN%20RDAPCT%20CI&logo=github)](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml)
 [![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/Coverage-6.7%25-critical?logo=codecov&logoColor=white)](#testing--coverage)
+[![Coverage](https://img.shields.io/badge/Coverage-16.9%25-yellow?logo=codecov&logoColor=white)](#testing--coverage)
 [![RDAPCT: 2024 Registrar - 0 errors](https://img.shields.io/badge/RDAPCT-2024%20Registrar%20%E2%9C%94%200%20errors-brightgreen)](README.md#icann-conformance)
 [![RDAPCT: 2024 Registry - 0 errors*](https://img.shields.io/badge/RDAPCT-2024%20Registry%20%E2%9C%94%200%20errors*%20-blue)](README.md#icann-conformance)
 
@@ -824,16 +824,20 @@ Current statement coverage (measured locally, `make test-cover`):
 
 | Package | Coverage |
 |---------|:---:|
-| `internal/middleware` | 23.3% |
-| `internal/store` | 6.2% |
-| all other packages | 0% |
-| **Total** | **6.7%** |
+| `internal/rdap` | 67.2% |
+| `internal/service` | 57.7% |
+| `internal/middleware` | 47.5% |
+| `internal/store` | 5.9%* |
+| **Total** | **16.9%** |
 
-> Coverage is currently **low** — the conformance-critical `internal/service` and
-> `internal/rdap` layers have no unit tests yet. The project is validated against
-> the ICANN conformance tool (see [ICANN Conformance](#icann-conformance)), which
-> exercises the full HTTP/RDAP output end-to-end, but statement-level unit tests
-> for those packages are an open improvement.
+\* `internal/store`'s Postgres integration tests require a live database and are
+gated behind `RDAP_TEST_DSN`, so they don't count toward the no-DB local run.
+
+> The RDAP mapping (`service`) and wire-format (`rdap`) layers — the code most likely
+> to affect conformance — now have meaningful unit tests. The project is also validated
+> end-to-end against the ICANN conformance tool in CI (see
+> [ICANN Conformance](#icann-conformance)). Remaining gaps are in the `store` and
+> `config`/`handlers` layers.
 
 ```bash
 make test          # go test -v -race ./...
