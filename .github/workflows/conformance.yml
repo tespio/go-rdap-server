@@ -23,7 +23,7 @@ jobs:
       BASE_URL: "https://127.0.0.1.nip.io:8443/domain/example.com"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -33,7 +33,7 @@ jobs:
 
       # rdapct requires Java 21+.
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
