@@ -1,0 +1,138 @@
+name: Conformance
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The project's headline claim is "passes ICANN RDAP conformance". This job
+  # verifies that claim automatically: build -> start the server with TLS ->
+  # run the official ICANN RDAP Conformance Tool (rdapct) against it -> fail the
+  # build if conformance regresses.
+  icann-rdapct:
+    name: ICANN RDAPCT (gTLD registrar, 2024 profile)
+    runs-on: ubuntu-latest
+    env:
+      RDAPCT_VERSION: "3.1.0"
+      RDAPCT_JAR: "rdapct-3.1.0.jar"
+      BASE_URL: "https://127.0.0.1.nip.io:8443/domain/example.com"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # rdapct requires Java 21+.
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Generate self-signed cert + combined truststore
+        run: |
+          set -euo pipefail
+          mkdir -p .rdapct-ci/tls .rdapct-ci/rdapct/results
+          # Wildcard *.nip.io resolves to 127.0.0.1; nip.io avoids rdapct's
+          # loopback special-purpose host validation failure.
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout .rdapct-ci/tls/tls.key \
+            -out .rdapct-ci/tls/tls.crt \
+            -days 1 -subj "/CN=127.0.0.1.nip.io" \
+            -addext "subjectAltName=DNS:127.0.0.1.nip.io,DNS:*.nip.io,IP:127.0.0.1"
+          # Build a truststore: start from the JDK cacerts and add our self-signed
+          # cert so rdapct can validate the TLS connection.
+          JDK_HOME="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
+          cp "$JDK_HOME/lib/security/cacerts" .rdapct-ci/tls/combined.jks
+          keytool -importcert -noprompt -alias rdap-selfsigned \
+            -file .rdapct-ci/tls/tls.crt \
+            -keystore .rdapct-ci/tls/combined.jks -storepass changeit
+
+      - name: Build RDAP server
+        run: go build -o rdapd ./cmd/rdapd
+
+      - name: Write TLS server config
+        run: |
+          cat > .rdapct-ci/config-tls.yaml <<'EOF'
+          server:
+            host: "0.0.0.0"
+            port: 8443
+            read_timeout: 10s
+            write_timeout: 10s
+            idle_timeout: 60s
+            max_header_bytes: 1048576
+            tls_cert_file: ".rdapct-ci/tls/tls.crt"
+            tls_key_file: ".rdapct-ci/tls/tls.key"
+          storage:
+            driver: "memory"
+          rdap:
+            mode: "registrar"
+            tlds: ["com", "net", "org"]
+            base_url: "https://127.0.0.1.nip.io:8443"
+            # Seed registrar is IANA ID 2 (Network Solutions); -47701 requires
+            # the about link to equal its IANA-registered RDAP base URL.
+            registrar_base_url: "https://rdap.networksolutions.com/rdap/"
+            max_search_limit: 100
+            server_name: "RDAP Server (conformance)"
+            version: "1.1.0"
+          EOF
+
+      - name: Start RDAP server (background)
+        run: |
+          set -euo pipefail
+          ./rdapd -config .rdapct-ci/config-tls.yaml > .rdapct-ci/rdapd.log 2>&1 &
+          echo "rdapd_pid=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            if curl -ksf "https://127.0.0.1.nip.io:8443/domain/example.com" >/dev/null 2>&1; then
+              echo "server up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server failed to start; log:" >&2
+          cat .rdapct-ci/rdapd.log >&2 || true
+          exit 1
+
+      - name: Download ICANN RDAPCT jar
+        run: |
+          curl -sSL -o ".rdapct-ci/rdapct/$RDAPCT_JAR" \
+            "https://github.com/icann/rdap-conformance-tool/releases/download/v$RDAPCT_VERSION/$RDAPCT_JAR"
+          ls -la ".rdapct-ci/rdapct/$RDAPCT_JAR"
+
+      - name: Run ICANN RDAPCT (gTLD registrar, 2024 profile)
+        run: |
+          set -euo pipefail
+          cd .rdapct-ci/rdapct
+          java \
+            -Djavax.net.ssl.trustStore=../tls/combined.jks \
+            -Djavax.net.ssl.trustStorePassword=changeit \
+            -jar "$RDAPCT_JAR" \
+            -c ../../conformance/rdapct_config.json \
+            --gtld-registrar --use-rdap-profile-february-2024 \
+            --no-ipv6-queries \
+            --additional-conformance-queries \
+            "$BASE_URL" || true
+          result_file="$(ls -t results/results-*.json | head -n1)"
+          echo "result file: $result_file"
+          cat "$result_file"
+          errors="$(jq '[.results.error[]?] | length' "$result_file")"
+          passed="$(jq '.groupOK | length' "$result_file")"
+          echo "groups passed: $passed, errors: $errors"
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::RDAP conformance regressed: $errors error(s) across $passed group(s)"
+            jq -r '.results.error[]? | "  -\(.code): \(.message)"' "$result_file" | sort -u
+            exit 1
+          fi
+
+      - name: Stop RDAP server
+        if: always()
+        run: kill "${rdapd_pid:-0}" 2>/dev/null || true

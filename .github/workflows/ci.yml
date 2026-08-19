@@ -109,12 +109,14 @@ jobs:
         run: |
           set -e
           # 002_mysql_init.sql creates/uses the rdap database itself.
-          mysql -h localhost -P 3306 -uroot -proot < migrations/002_mysql_init.sql
+          # Use 127.0.0.1 (not localhost) so the client connects via TCP to the
+          # service container rather than the Unix socket.
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot < migrations/002_mysql_init.sql
 
       - name: Verify schema and seed present
         run: |
           set -e
-          mysql -h localhost -P 3306 -uroot -proot -e \
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot -e \
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='rdap' AND table_name IN ('domains','entities','nameservers','ip_networks','autnums','registry_history');"
-          mysql -h localhost -P 3306 -uroot -proot rdap -e \
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot rdap -e \
             "SELECT ldh_name FROM domains WHERE handle='EX1-NAME';"
