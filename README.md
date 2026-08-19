@@ -557,8 +557,15 @@ The server is validated against the official
         <sup>1</sup> Only <code>-23101</code>: the queried TLD's RDAP base URL must be
         registered in the <a href="https://www.iana.org/domains/rdap">IANA DNS RDAP bootstrap</a>.
         A production registry must register its real base URL in the bootstrap file (e.g.
-        <code>.com</code> points to Verisign). This is a
-        <strong>registration/data constraint, not a server defect</strong>.
+        <code>.com</code> points to <code>https://rdap.verisign.com/com/v1/</code>).
+        This is a <strong>registration/data constraint, not a server defect</strong>.<br>
+        <br>
+        <strong>Why the error appears twice:</strong> rdapct sends the same domain query
+        twice with different <code>Accept</code> headers (<code>application/rdap+json</code>
+        and <code>application/json</code>) to verify content negotiation, and the
+        <code>-23101</code> bootstrap check runs once per request. Both entries have the
+        identical queried URI, TLD, and value — the two errors are the same single check
+        failing on two media-type variants of the same request, not two distinct defects.
       </td>
     </tr>
   </tbody>
