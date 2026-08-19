@@ -15,15 +15,25 @@ import matplotlib.pyplot as plt
 def load(path):
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
+    # Normalize column names so the chart works with both the Windows/PowerShell
+    # runner (Concurrency, ReqPerSec, P50_ms, ...) and the Linux/CI runner
+    # (concurrency, req_per_sec, p50_ms, ...).
+    def get(r, *names):
+        low = {k.lower(): v for k, v in r.items()}
+        for n in names:
+            if n.lower() in low:
+                return low[n.lower()]
+        raise KeyError(names)
+
     for r in rows:
-        r["Concurrency"] = int(r["Concurrency"])
-        r["ReqPerSec"] = float(r["ReqPerSec"])
-        r["P50_ms"] = float(r["P50_ms"])
-        r["P90_ms"] = float(r["P90_ms"])
-        r["P99_ms"] = float(r["P99_ms"])
-        r["Max_ms"] = float(r["Max_ms"])
-        r["MemMB"] = float(r["MemMB"])
-        r["CPU_used_sec"] = float(r["CPU_used_sec"])
+        r["Concurrency"] = int(get(r, "Concurrency", "concurrency"))
+        r["ReqPerSec"] = float(get(r, "ReqPerSec", "req_per_sec", "req_per_sec", "rps"))
+        r["P50_ms"] = float(get(r, "P50_ms", "p50_ms"))
+        r["P90_ms"] = float(get(r, "P90_ms", "p90_ms"))
+        r["P99_ms"] = float(get(r, "P99_ms", "p99_ms"))
+        r["Max_ms"] = float(get(r, "Max_ms", "max_ms"))
+        r["MemMB"] = float(get(r, "MemMB", "mem_mb", "memMB"))
+        r["CPU_used_sec"] = float(get(r, "CPU_used_sec", "cpu_sec"))
     return rows
 
 

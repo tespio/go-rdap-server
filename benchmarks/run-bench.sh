@@ -24,9 +24,10 @@ for c in "${concs[@]}"; do
   # Run the load test.
   $HEY -z "${DUR}s" -c "$c" -o csv -m GET "$URL" > "$OUTDIR/hey-c$c.csv"
 
-  # Post metrics.
+  # Post metrics. VmHWM is in KB; convert to MB.
   mem1=$(grep VmHWM /proc/$(pgrep -f 'rdapd -config' | head -n1)/status 2>/dev/null | awk '{print $2}') || mem1=""
   mem1=${mem1:-0}
+  mem_mb=$(awk -v k="$mem1" 'BEGIN{printf "%.2f", k/1024}')
 
   # Parse CSV. Columns: response-time,DNS+dialup,DNS,Request-write,Response-delay,Response-read,status-code,offset
   n=$(($(wc -l < "$OUTDIR/hey-c$c.csv") - 1))
@@ -41,8 +42,8 @@ for c in "${concs[@]}"; do
 
   cpu_sec=$(awk -F, 'NR>1{s+=$1}END{printf "%.2f", s}' "$OUTDIR/hey-c$c.csv")
 
-  echo "$c,$n,$rps,$p50,$p90,$p99,$max_ms,$errs,$mem1,$cpu_sec" >> "$OUTDIR/summary.csv"
-  echo "  $c conn | $n req | $rps rps | p50 ${p50}ms | p90 ${p90}ms | p99 ${p99}ms | err $errs | mem ${mem1}KB | cpu ${cpu_sec}s"
+  echo "$c,$n,$rps,$p50,$p90,$p99,$max_ms,$errs,$mem_mb,$cpu_sec" >> "$OUTDIR/summary.csv"
+  echo "  $c conn | $n req | $rps rps | p50 ${p50}ms | p90 ${p90}ms | p99 ${p99}ms | err $errs | mem ${mem_mb}MB | cpu ${cpu_sec}s"
 done
 
 echo "Summary written to $OUTDIR/summary.csv"
