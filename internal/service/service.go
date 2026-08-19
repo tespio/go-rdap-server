@@ -266,9 +266,11 @@ func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, reques
 	}
 
 	// The registrar entity is built from the resolved registrar contact in the
-	// aggregate (so a real registrar's own vcard is used), falling back to a
-	// static example when none is available (e.g. plain domain searches). Both
-	// paths emit the same about link to the IANA-registered registrar base URL.
+	// aggregate when present. The static example vcard is used ONLY when there is
+	// genuinely no resolved registrar (plain domain searches, or a domain with no
+	// registrar row). A resolved-but-sparse registrar must NOT fall back to the
+	// fake example, or we'd emit "Example Registrar Inc." for a real registrar
+	// that merely lacks vcard data.
 	registrarEntity := rdap.Entity{
 		Common: rdap.Common{
 			ObjectClassName: "entity",
@@ -287,9 +289,13 @@ func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, reques
 		},
 	}
 
-	if agg != nil && agg.Registrar != nil && agg.Registrar.VCard != nil {
-		registrarEntity.VCardArray = vcardToJCard(agg.Registrar.VCard)
+	if agg != nil && agg.Registrar != nil {
+		// A resolved registrar contact exists: render from it. jCard's fn is a
+		// REQUIRED property (RFC 6350 §6.2.1), so if the registrar has no name we
+		// synthesize fn from its handle rather than emit an invalid vcard.
+		registrarEntity.VCardArray = vcardToJCard(agg.Registrar.VCard, agg.Registrar.Handle)
 	} else {
+		// No resolved registrar: static example (only for seed/plain searches).
 		registrarEntity.VCardArray = []interface{}{
 			"vcard",
 			[]interface{}{
@@ -347,8 +353,11 @@ func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, reques
 		regHandles := d.Contacts[domain.RoleRegistrant]
 		if len(regHandles) > 0 {
 			registrantEntity.Common.Handle = regHandles[0]
-			if c, ok := agg.Contacts[regHandles[0]]; ok && c.VCard != nil {
-				registrantEntity.VCardArray = vcardToJCard(c.VCard)
+			// Render from the resolved registrant whenever it exists, even if its
+			// vcard is sparse/empty (never substitute the fake example). jCard fn
+			// is required, so synthesize it from the handle if the vcard has none.
+			if c, ok := agg.Contacts[regHandles[0]]; ok {
+				registrantEntity.VCardArray = vcardToJCard(c.VCard, c.Handle)
 			}
 		}
 	}
@@ -491,12 +500,27 @@ func roleStrings(roles []domain.ContactRole) []string {
 // emitted over RDAP. The shape matches the ICANN-validated output:
 // ["vcard", [ [name, params, type, value], ... ]]. Addresses use the 7-element
 // adr form and telephone types are emitted as ["voice"] / ["fax"].
-func vcardToJCard(v *domain.VCard) []interface{} {
+//
+// jCard's "fn" property is REQUIRED (RFC 6350 §6.2.1). If the vcard has no
+// FullName, fn is synthesized from fallbackName (the contact handle) so the
+// emitted vcard is always schema-valid; a resolved-but-name-less contact is
+// rendered as-is (its handle) rather than substituting placeholder data.
+func vcardToJCard(v *domain.VCard, fallbackName string) []interface{} {
 	props := []interface{}{
 		[]interface{}{"version", map[string]interface{}{}, "text", "4.0"},
 	}
-	if v.FullName != "" {
-		props = append(props, []interface{}{"fn", map[string]interface{}{}, "text", v.FullName})
+
+	fn := ""
+	if v != nil {
+		fn = v.FullName
+	}
+	if fn == "" {
+		fn = fallbackName
+	}
+	props = append(props, []interface{}{"fn", map[string]interface{}{}, "text", fn})
+
+	if v == nil {
+		return []interface{}{"vcard", props}
 	}
 	if v.Kind != "" {
 		props = append(props, []interface{}{"kind", map[string]interface{}{}, "text", v.Kind})
