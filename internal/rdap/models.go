@@ -1,7 +1,5 @@
 package rdap
 
-import "time"
-
 // RDAP JSON response types per RFC 9083.
 
 type Conformance struct {
@@ -200,79 +198,4 @@ type ErrorResponse struct {
 	Title        string   `json:"title,omitempty"`
 	Description  []string `json:"description,omitempty"`
 	Notices      []Notice `json:"notices,omitempty"`
-}
-
-// DomainRecord is the internal storage model for a domain.
-type DomainRecord struct {
-	Handle     string    `json:"handle"`
-	LDHName    string    `json:"ldh_name"`
-	UnicodeName string   `json:"unicode_name"`
-	TLD        string    `json:"tld"`
-	Status     []string  `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	Registrant string    `json:"registrant"`
-	Admin      string    `json:"admin"`
-	Tech       string    `json:"tech"`
-	Billing    string    `json:"billing"`
-	Nameservers []NameserverRecord `json:"nameservers"`
-	SecureDNS  *SecureDNSRecord    `json:"secure_dns"`
-}
-
-type NameserverRecord struct {
-	Handle     string   `json:"handle"`
-	LDHName    string   `json:"ldh_name"`
-	UnicodeName string  `json:"unicode_name"`
-	IPV4       []string `json:"ipv4"`
-	IPV6       []string `json:"ipv6"`
-	Status     []string `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
-
-type SecureDNSRecord struct {
-	ZoneSigned       bool       `json:"zone_signed"`
-	DelegationSigned bool       `json:"delegation_signed"`
-	MaxSigLife       *int       `json:"max_sig_life"`
-	DSRecords        []DSRecord `json:"ds_records"`
-	KeyRecords       []KeyRecord `json:"key_records"`
-}
-
-type DSRecord struct {
-	KeyTag     int    `json:"key_tag"`
-	Algorithm  int    `json:"algorithm"`
-	DigestType int    `json:"digest_type"`
-	Digest     string `json:"digest"`
-}
-
-type KeyRecord struct {
-	Flags     int    `json:"flags"`
-	Protocol  int    `json:"protocol"`
-	Algorithm int    `json:"algorithm"`
-	PublicKey string `json:"public_key"`
-}
-
-type EntityRecord struct {
-	Handle      string    `json:"handle"`
-	VCardJSON   string    `json:"vcard_json"`
-	Roles       []string  `json:"roles"`
-	Status      []string  `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	PublicIDs   []PublicID `json:"public_ids"`
-}
-
-type IPNetworkRecord struct {
-	Handle       string    `json:"handle"`
-	StartAddress string    `json:"start_address"`
-	EndAddress   string    `json:"end_address"`
-	IPVersion    string    `json:"ip_version"`
-	CIDR         []string  `json:"cidr"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"`
-	Country      string    `json:"country"`
-	Status       []string  `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
 }

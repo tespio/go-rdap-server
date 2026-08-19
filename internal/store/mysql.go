@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/rdap"
+	"github.com/rdap-server/rdap/internal/domain"
 )
 
 // MySQLStore is a MySQL-backed implementation of the storage interface.
@@ -70,16 +70,11 @@ func NewMySQLStore(cfg config.StorageConfig) (*MySQLStore, error) {
 }
 
 // normalizeMySQLDSN accepts both the native go-sql-driver DSN and a mysql:// URL.
-// The URL form supports the same query parameters as the native DSN
-// (parseTime, charset, collation, tls, timeout, readTimeout, writeTimeout, loc, ...);
-// unknown parameters are passed through verbatim.
 func normalizeMySQLDSN(dsn string) (string, error) {
 	if !strings.HasPrefix(dsn, "mysql://") {
 		return dsn, nil
 	}
 
-	// net/url rejects the go-sql-driver style host mysql://user@tcp(host:port)/db,
-	// so rewrite it to the plain mysql://user@host:port/db form first.
 	pre := dsn
 	if idx := strings.Index(pre, "@tcp("); idx >= 0 {
 		rest := pre[idx+len("@tcp("):]
@@ -118,8 +113,6 @@ func normalizeMySQLDSN(dsn string) (string, error) {
 		case "collation":
 			mc.Collation = v[0]
 		default:
-			// timeout, readTimeout, writeTimeout, tls, loc, etc. are parsed by
-			// mysql.ParseDSN from the formatted DSN.
 			mc.Params[k] = v[0]
 		}
 	}
@@ -127,7 +120,7 @@ func normalizeMySQLDSN(dsn string) (string, error) {
 	return mc.FormatDSN(), nil
 }
 
-func (s *MySQLStore) LookupDomain(name string) (*rdap.DomainRecord, error) {
+func (s *MySQLStore) LookupDomain(name string) (*domain.Domain, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, tld, status,
 		       created_at, updated_at, expires_at,
@@ -136,65 +129,97 @@ func (s *MySQLStore) LookupDomain(name string) (*rdap.DomainRecord, error) {
 		FROM domains WHERE ldh_name = ? OR unicode_name = ?
 	`
 
-	var record rdap.DomainRecord
+	var record domain.Domain
 	var statusJSON, nsJSON, sdJSON []byte
+	var created, updated, expires time.Time
+	var registrant, admin, tech, billing *string
 
 	err := s.db.QueryRowContext(context.Background(), query, name, name).Scan(
 		&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
-		&statusJSON, &record.CreatedAt, &record.UpdatedAt, &record.ExpiresAt,
-		&record.Registrant, &record.Admin, &record.Tech, &record.Billing,
+		&statusJSON, &created, &updated, &expires,
+		&registrant, &admin, &tech, &billing,
 		&nsJSON, &sdJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("domain lookup: %w", err)
 	}
 
-	json.Unmarshal(statusJSON, &record.Status)
-	json.Unmarshal(nsJSON, &record.Nameservers)
-	if sdJSON != nil {
-		json.Unmarshal(sdJSON, &record.SecureDNS)
+	record.Status = parseStatus(statusJSON)
+	record.ExpiresAt = expires
+	record.SecureDNS = parseSecureDNS(sdJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
+	populateDomainContacts(&record, registrant, admin, tech, billing)
+
+	if len(nsJSON) > 0 {
+		record.Nameservers = parseNameservers(nsJSON)
 	}
 
 	return &record, nil
 }
 
-func (s *MySQLStore) LookupEntity(handle string) (*rdap.EntityRecord, error) {
+func (s *MySQLStore) LookupContact(handle string) (*domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
 		FROM entities WHERE handle = ?
 	`
 
-	var record rdap.EntityRecord
+	var record domain.Contact
 	var rolesJSON, statusJSON, pidJSON []byte
+	var vcardJSON *string
+	var created, updated time.Time
 
 	err := s.db.QueryRowContext(context.Background(), query, handle).Scan(
-		&record.Handle, &record.VCardJSON, &rolesJSON, &statusJSON,
-		&record.CreatedAt, &record.UpdatedAt, &pidJSON,
+		&record.Handle, &vcardJSON, &rolesJSON, &statusJSON,
+		&created, &updated, &pidJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("entity lookup: %w", err)
 	}
 
-	json.Unmarshal(rolesJSON, &record.Roles)
-	json.Unmarshal(statusJSON, &record.Status)
-	json.Unmarshal(pidJSON, &record.PublicIDs)
+	var roles []string
+	json.Unmarshal(rolesJSON, &roles)
+	for _, r := range roles {
+		record.Roles = append(record.Roles, domain.ContactRole(r))
+	}
+	record.Status = parseStatus(statusJSON)
+
+	var pids []domain.PublicID
+	json.Unmarshal(pidJSON, &pids)
+	record.PublicIDs = pids
+
+	if vcardJSON != nil && *vcardJSON != "" {
+		record.VCard = parseVCardJSON(*vcardJSON)
+	}
+
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
 
 	return &record, nil
 }
 
-func (s *MySQLStore) LookupNameserver(name string) (*rdap.NameserverRecord, error) {
+func (s *MySQLStore) LookupNameserver(name string) (*domain.NameServer, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
 		FROM nameservers WHERE ldh_name = ? OR unicode_name = ?
 	`
 
-	var record rdap.NameserverRecord
+	var record domain.NameServer
 	var ipv4JSON, ipv6JSON, statusJSON []byte
+	var created, updated time.Time
 
 	err := s.db.QueryRowContext(context.Background(), query, name, name).Scan(
 		&record.Handle, &record.LDHName, &record.UnicodeName,
 		&ipv4JSON, &ipv6JSON, &statusJSON,
-		&record.CreatedAt, &record.UpdatedAt,
+		&created, &updated,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("nameserver lookup: %w", err)
@@ -202,12 +227,18 @@ func (s *MySQLStore) LookupNameserver(name string) (*rdap.NameserverRecord, erro
 
 	json.Unmarshal(ipv4JSON, &record.IPV4)
 	json.Unmarshal(ipv6JSON, &record.IPV6)
-	json.Unmarshal(statusJSON, &record.Status)
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
 
 	return &record, nil
 }
 
-func (s *MySQLStore) LookupIPNetwork(cidr string) (*rdap.IPNetworkRecord, error) {
+func (s *MySQLStore) LookupIPNetwork(cidr string) (*domain.IPNetwork, error) {
 	version, start4, end4, start6, end6, err := ipRange(cidr)
 	if err != nil {
 		return nil, err
@@ -235,29 +266,68 @@ func (s *MySQLStore) LookupIPNetwork(cidr string) (*rdap.IPNetworkRecord, error)
 		args = []any{start6, end6}
 	}
 
-	var record rdap.IPNetworkRecord
+	var record domain.IPNetwork
 	var cidrJSON, statusJSON []byte
+	var created, updated time.Time
 
 	err = s.db.QueryRowContext(context.Background(), query, args...).Scan(
 		&record.Handle, &record.StartAddress, &record.EndAddress,
 		&record.IPVersion, &cidrJSON, &record.Name, &record.Type,
-		&record.Country, &statusJSON, &record.CreatedAt, &record.UpdatedAt,
+		&record.Country, &statusJSON, &created, &updated,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("IP network lookup: %w", err)
 	}
 
 	json.Unmarshal(cidrJSON, &record.CIDR)
-	json.Unmarshal(statusJSON, &record.Status)
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
 
 	return &record, nil
 }
 
-func (s *MySQLStore) SearchDomainsByName(pattern string, limit int) ([]rdap.DomainRecord, error) {
+func (s *MySQLStore) LookupAutnum(asn int) (*domain.Autnum, error) {
+	query := `
+		SELECT handle, start_asn, end_asn, name, type, country, status, created_at, updated_at
+		FROM autnums WHERE start_asn <= ? AND end_asn >= ?
+		LIMIT 1
+	`
+
+	var record domain.Autnum
+	var statusJSON []byte
+	var created, updated time.Time
+
+	err := s.db.QueryRowContext(context.Background(), query, asn, asn).Scan(
+		&record.Handle, &record.StartASN, &record.EndASN,
+		&record.Name, &record.Type, &record.Country,
+		&statusJSON, &created, &updated,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("autnum lookup: %w", err)
+	}
+
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
+
+	return &record, nil
+}
+
+func (s *MySQLStore) SearchDomainsByName(pattern string, limit int) ([]domain.Domain, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, tld, status,
 		       created_at, updated_at, expires_at,
-		       registrant, admin, tech, billing
+		       registrant, admin, tech, billing,
+		       nameservers, secure_dns
 		FROM domains
 		WHERE ldh_name LIKE ? OR unicode_name LIKE ?
 		LIMIT ?
@@ -270,14 +340,15 @@ func (s *MySQLStore) SearchDomainsByName(pattern string, limit int) ([]rdap.Doma
 	}
 	defer rows.Close()
 
-	return scanDomainRows(rows)
+	return scanMySQLDomainRows(rows)
 }
 
-func (s *MySQLStore) SearchDomainsByNS(nsName string, limit int) ([]rdap.DomainRecord, error) {
+func (s *MySQLStore) SearchDomainsByNS(nsName string, limit int) ([]domain.Domain, error) {
 	query := `
 		SELECT d.handle, d.ldh_name, d.unicode_name, d.tld, d.status,
 		       d.created_at, d.updated_at, d.expires_at,
-		       d.registrant, d.admin, d.tech, d.billing
+		       d.registrant, d.admin, d.tech, d.billing,
+		       d.nameservers, d.secure_dns
 		FROM domains d
 		JOIN domain_nameservers dn ON d.handle = dn.domain_handle
 		JOIN nameservers n ON dn.ns_handle = n.handle
@@ -291,10 +362,10 @@ func (s *MySQLStore) SearchDomainsByNS(nsName string, limit int) ([]rdap.DomainR
 	}
 	defer rows.Close()
 
-	return scanDomainRows(rows)
+	return scanMySQLDomainRows(rows)
 }
 
-func (s *MySQLStore) SearchEntitiesByName(pattern string, limit int) ([]rdap.EntityRecord, error) {
+func (s *MySQLStore) SearchContactsByName(pattern string, limit int) ([]domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
 		FROM entities
@@ -309,10 +380,10 @@ func (s *MySQLStore) SearchEntitiesByName(pattern string, limit int) ([]rdap.Ent
 	}
 	defer rows.Close()
 
-	return scanEntityRows(rows)
+	return scanMySQLContactRows(rows)
 }
 
-func (s *MySQLStore) SearchEntitiesByHandle(pattern string, limit int) ([]rdap.EntityRecord, error) {
+func (s *MySQLStore) SearchContactsByHandle(pattern string, limit int) ([]domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
 		FROM entities
@@ -327,10 +398,10 @@ func (s *MySQLStore) SearchEntitiesByHandle(pattern string, limit int) ([]rdap.E
 	}
 	defer rows.Close()
 
-	return scanEntityRows(rows)
+	return scanMySQLContactRows(rows)
 }
 
-func (s *MySQLStore) SearchNameserversByName(pattern string, limit int) ([]rdap.NameserverRecord, error) {
+func (s *MySQLStore) SearchNameserversByName(pattern string, limit int) ([]domain.NameServer, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
 		FROM nameservers
@@ -345,10 +416,10 @@ func (s *MySQLStore) SearchNameserversByName(pattern string, limit int) ([]rdap.
 	}
 	defer rows.Close()
 
-	return scanNameserverRows(rows)
+	return scanMySQLNameserverRows(rows)
 }
 
-func (s *MySQLStore) SearchNameserversByIP(ip string, limit int) ([]rdap.NameserverRecord, error) {
+func (s *MySQLStore) SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
 		FROM nameservers
@@ -363,7 +434,7 @@ func (s *MySQLStore) SearchNameserversByIP(ip string, limit int) ([]rdap.Nameser
 	}
 	defer rows.Close()
 
-	return scanNameserverRows(rows)
+	return scanMySQLNameserverRows(rows)
 }
 
 func (s *MySQLStore) Ping() error {
@@ -374,59 +445,158 @@ func (s *MySQLStore) Close() error {
 	return s.db.Close()
 }
 
-func scanDomainRows(rows *sql.Rows) ([]rdap.DomainRecord, error) {
-	var results []rdap.DomainRecord
+// populateDomainContacts maps registrant/admin/tech/billing columns to the
+// domain's Contacts map and sets the registrar reference.
+func populateDomainContacts(d *domain.Domain, registrant, admin, tech, billing *string) {
+	d.Contacts = map[domain.ContactRole][]string{}
+	if registrant != nil {
+		d.Contacts[domain.RoleRegistrant] = []string{*registrant}
+		d.Registrar = *registrant
+	}
+	if admin != nil {
+		d.Contacts[domain.RoleAdministrative] = []string{*admin}
+	}
+	if tech != nil {
+		d.Contacts[domain.RoleTechnical] = []string{*tech}
+	}
+	if billing != nil {
+		d.Contacts[domain.RoleBilling] = []string{*billing}
+	}
+}
+
+type mysqlRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanMySQLDomainRow(row mysqlRowScanner) (*domain.Domain, error) {
+	var record domain.Domain
+	var statusJSON, nsJSON, sdJSON []byte
+	var created, updated, expires time.Time
+	var registrant, admin, tech, billing *string
+
+	if err := row.Scan(
+		&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
+		&statusJSON, &created, &updated, &expires,
+		&registrant, &admin, &tech, &billing,
+		&nsJSON, &sdJSON,
+	); err != nil {
+		return nil, fmt.Errorf("scan domain: %w", err)
+	}
+
+	record.Status = parseStatus(statusJSON)
+	record.ExpiresAt = expires
+	record.SecureDNS = parseSecureDNS(sdJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
+	populateDomainContacts(&record, registrant, admin, tech, billing)
+
+	if len(nsJSON) > 0 {
+		record.Nameservers = parseNameservers(nsJSON)
+	}
+
+	return &record, nil
+}
+
+func scanMySQLDomainRows(rows *sql.Rows) ([]domain.Domain, error) {
+	var results []domain.Domain
 	for rows.Next() {
-		var record rdap.DomainRecord
-		var statusJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
-			&statusJSON, &record.CreatedAt, &record.UpdatedAt, &record.ExpiresAt,
-			&record.Registrant, &record.Admin, &record.Tech, &record.Billing,
-		); err != nil {
-			return nil, fmt.Errorf("scan domain: %w", err)
+		d, err := scanMySQLDomainRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(statusJSON, &record.Status)
-		results = append(results, record)
+		results = append(results, *d)
 	}
 	return results, rows.Err()
 }
 
-func scanEntityRows(rows *sql.Rows) ([]rdap.EntityRecord, error) {
-	var results []rdap.EntityRecord
+func scanMySQLContactRow(row mysqlRowScanner) (*domain.Contact, error) {
+	var record domain.Contact
+	var rolesJSON, statusJSON, pidJSON []byte
+	var vcardJSON *string
+	var created, updated time.Time
+
+	if err := row.Scan(
+		&record.Handle, &vcardJSON, &rolesJSON, &statusJSON,
+		&created, &updated, &pidJSON,
+	); err != nil {
+		return nil, fmt.Errorf("scan entity: %w", err)
+	}
+
+	var roles []string
+	json.Unmarshal(rolesJSON, &roles)
+	for _, r := range roles {
+		record.Roles = append(record.Roles, domain.ContactRole(r))
+	}
+	record.Status = parseStatus(statusJSON)
+
+	var pids []domain.PublicID
+	json.Unmarshal(pidJSON, &pids)
+	record.PublicIDs = pids
+
+	if vcardJSON != nil && *vcardJSON != "" {
+		record.VCard = parseVCardJSON(*vcardJSON)
+	}
+
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
+
+	return &record, nil
+}
+
+func scanMySQLContactRows(rows *sql.Rows) ([]domain.Contact, error) {
+	var results []domain.Contact
 	for rows.Next() {
-		var record rdap.EntityRecord
-		var rolesJSON, statusJSON, pidJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.VCardJSON, &rolesJSON, &statusJSON,
-			&record.CreatedAt, &record.UpdatedAt, &pidJSON,
-		); err != nil {
-			return nil, fmt.Errorf("scan entity: %w", err)
+		c, err := scanMySQLContactRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(rolesJSON, &record.Roles)
-		json.Unmarshal(statusJSON, &record.Status)
-		json.Unmarshal(pidJSON, &record.PublicIDs)
-		results = append(results, record)
+		results = append(results, *c)
 	}
 	return results, rows.Err()
 }
 
-func scanNameserverRows(rows *sql.Rows) ([]rdap.NameserverRecord, error) {
-	var results []rdap.NameserverRecord
+func scanMySQLNameserverRow(row mysqlRowScanner) (*domain.NameServer, error) {
+	var record domain.NameServer
+	var ipv4JSON, ipv6JSON, statusJSON []byte
+	var created, updated time.Time
+
+	if err := row.Scan(
+		&record.Handle, &record.LDHName, &record.UnicodeName,
+		&ipv4JSON, &ipv6JSON, &statusJSON,
+		&created, &updated,
+	); err != nil {
+		return nil, fmt.Errorf("scan nameserver: %w", err)
+	}
+
+	json.Unmarshal(ipv4JSON, &record.IPV4)
+	json.Unmarshal(ipv6JSON, &record.IPV6)
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "mysql",
+	}
+
+	return &record, nil
+}
+
+func scanMySQLNameserverRows(rows *sql.Rows) ([]domain.NameServer, error) {
+	var results []domain.NameServer
 	for rows.Next() {
-		var record rdap.NameserverRecord
-		var ipv4JSON, ipv6JSON, statusJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.LDHName, &record.UnicodeName,
-			&ipv4JSON, &ipv6JSON, &statusJSON,
-			&record.CreatedAt, &record.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan nameserver: %w", err)
+		n, err := scanMySQLNameserverRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(ipv4JSON, &record.IPV4)
-		json.Unmarshal(ipv6JSON, &record.IPV6)
-		json.Unmarshal(statusJSON, &record.Status)
-		results = append(results, record)
+		results = append(results, *n)
 	}
 	return results, rows.Err()
 }

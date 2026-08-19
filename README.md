@@ -154,8 +154,8 @@ rdap:
   max_domain_length: 253
   max_search_limit: 100
   port43_whois: "whois.example.com"
-  server_name: "RDAP Server v1.0"
-  version: "1.0.0"
+  server_name: "RDAP Server v1.1"
+  version: "1.1.0"
 
 auth:
   enabled: false
@@ -194,7 +194,7 @@ rate_limiting:
 | `rdap.max_search_limit` | `100` | Max results for search endpoints |
 | `rdap.port43_whois` | *(unset)* | Whois server host for the `port43` member |
 | `rdap.server_name` | *(unset)* | Server display name |
-| `rdap.version` | `1.0` | Server version string |
+| `rdap.version` | `1.1` | Server version string |
 | `auth.enabled` | `false` | Enable JWT authentication |
 | `metrics.enabled` | `true` | Enable the Prometheus metrics endpoint |
 | `rate_limiting.enabled` | `true` | Enable per-IP rate limiting |

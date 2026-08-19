@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/rdap"
+	"github.com/rdap-server/rdap/internal/domain"
 )
 
 type PostgresStore struct {
@@ -44,7 +44,7 @@ func NewPostgresStore(cfg config.StorageConfig) (*PostgresStore, error) {
 	return &PostgresStore{pool: pool}, nil
 }
 
-func (s *PostgresStore) LookupDomain(name string) (*rdap.DomainRecord, error) {
+func (s *PostgresStore) LookupDomain(name string) (*domain.Domain, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, tld, status,
 		       created_at, updated_at, expires_at,
@@ -53,65 +53,114 @@ func (s *PostgresStore) LookupDomain(name string) (*rdap.DomainRecord, error) {
 		FROM domains WHERE ldh_name = $1 OR unicode_name = $1
 	`
 
-	var record rdap.DomainRecord
+	var record domain.Domain
 	var statusJSON, nsJSON, sdJSON []byte
+	var created, updated, expires time.Time
+	var registrant, admin, tech, billing *string
 
 	err := s.pool.QueryRow(context.Background(), query, name).Scan(
 		&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
-		&statusJSON, &record.CreatedAt, &record.UpdatedAt, &record.ExpiresAt,
-		&record.Registrant, &record.Admin, &record.Tech, &record.Billing,
+		&statusJSON, &created, &updated, &expires,
+		&registrant, &admin, &tech, &billing,
 		&nsJSON, &sdJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("domain lookup: %w", err)
 	}
 
-	json.Unmarshal(statusJSON, &record.Status)
-	json.Unmarshal(nsJSON, &record.Nameservers)
-	if sdJSON != nil {
-		json.Unmarshal(sdJSON, &record.SecureDNS)
+	record.Status = parseStatus(statusJSON)
+	record.ExpiresAt = expires
+	record.SecureDNS = parseSecureDNS(sdJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
+
+	record.Contacts = map[domain.ContactRole][]string{}
+	if registrant != nil {
+		record.Contacts[domain.RoleRegistrant] = []string{*registrant}
+	}
+	if admin != nil {
+		record.Contacts[domain.RoleAdministrative] = []string{*admin}
+	}
+	if tech != nil {
+		record.Contacts[domain.RoleTechnical] = []string{*tech}
+	}
+	if billing != nil {
+		record.Contacts[domain.RoleBilling] = []string{*billing}
+	}
+	if registrant != nil {
+		record.Registrar = *registrant
+	}
+
+	// The example schema stores full nameserver objects in a JSON column.
+	if len(nsJSON) > 0 {
+		record.Nameservers = parseNameservers(nsJSON)
 	}
 
 	return &record, nil
 }
 
-func (s *PostgresStore) LookupEntity(handle string) (*rdap.EntityRecord, error) {
+func (s *PostgresStore) LookupContact(handle string) (*domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
 		FROM entities WHERE handle = $1
 	`
 
-	var record rdap.EntityRecord
+	var record domain.Contact
 	var rolesJSON, statusJSON, pidJSON []byte
+	var vcardJSON *string
+	var created, updated time.Time
 
 	err := s.pool.QueryRow(context.Background(), query, handle).Scan(
-		&record.Handle, &record.VCardJSON, &rolesJSON, &statusJSON,
-		&record.CreatedAt, &record.UpdatedAt, &pidJSON,
+		&record.Handle, &vcardJSON, &rolesJSON, &statusJSON,
+		&created, &updated, &pidJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("entity lookup: %w", err)
 	}
 
-	json.Unmarshal(rolesJSON, &record.Roles)
-	json.Unmarshal(statusJSON, &record.Status)
-	json.Unmarshal(pidJSON, &record.PublicIDs)
+	var roles []string
+	json.Unmarshal(rolesJSON, &roles)
+	for _, r := range roles {
+		record.Roles = append(record.Roles, domain.ContactRole(r))
+	}
+	record.Status = parseStatus(statusJSON)
+
+	var pids []domain.PublicID
+	json.Unmarshal(pidJSON, &pids)
+	record.PublicIDs = pids
+
+	if vcardJSON != nil && *vcardJSON != "" {
+		record.VCard = parseVCardJSON(*vcardJSON)
+	}
+
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
 
 	return &record, nil
 }
 
-func (s *PostgresStore) LookupNameserver(name string) (*rdap.NameserverRecord, error) {
+func (s *PostgresStore) LookupNameserver(name string) (*domain.NameServer, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
 		FROM nameservers WHERE ldh_name = $1 OR unicode_name = $1
 	`
 
-	var record rdap.NameserverRecord
+	var record domain.NameServer
 	var ipv4JSON, ipv6JSON, statusJSON []byte
+	var created, updated time.Time
 
 	err := s.pool.QueryRow(context.Background(), query, name).Scan(
 		&record.Handle, &record.LDHName, &record.UnicodeName,
 		&ipv4JSON, &ipv6JSON, &statusJSON,
-		&record.CreatedAt, &record.UpdatedAt,
+		&created, &updated,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("nameserver lookup: %w", err)
@@ -119,41 +168,86 @@ func (s *PostgresStore) LookupNameserver(name string) (*rdap.NameserverRecord, e
 
 	json.Unmarshal(ipv4JSON, &record.IPV4)
 	json.Unmarshal(ipv6JSON, &record.IPV6)
-	json.Unmarshal(statusJSON, &record.Status)
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
 
 	return &record, nil
 }
 
-func (s *PostgresStore) LookupIPNetwork(cidr string) (*rdap.IPNetworkRecord, error) {
+func (s *PostgresStore) LookupIPNetwork(cidr string) (*domain.IPNetwork, error) {
 	query := `
 		SELECT handle, start_address, end_address, ip_version, cidr,
 		       name, type, country, status, created_at, updated_at
 		FROM ip_networks WHERE $1::inet <<= ANY(cidr)
 	`
 
-	var record rdap.IPNetworkRecord
+	var record domain.IPNetwork
 	var cidrJSON, statusJSON []byte
+	var created, updated time.Time
 
 	err := s.pool.QueryRow(context.Background(), query, cidr).Scan(
 		&record.Handle, &record.StartAddress, &record.EndAddress,
 		&record.IPVersion, &cidrJSON, &record.Name, &record.Type,
-		&record.Country, &statusJSON, &record.CreatedAt, &record.UpdatedAt,
+		&record.Country, &statusJSON, &created, &updated,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("IP network lookup: %w", err)
 	}
 
 	json.Unmarshal(cidrJSON, &record.CIDR)
-	json.Unmarshal(statusJSON, &record.Status)
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
 
 	return &record, nil
 }
 
-func (s *PostgresStore) SearchDomainsByName(pattern string, limit int) ([]rdap.DomainRecord, error) {
+func (s *PostgresStore) LookupAutnum(asn int) (*domain.Autnum, error) {
+	query := `
+		SELECT handle, start_asn, end_asn, name, type, country, status, created_at, updated_at
+		FROM autnums WHERE start_asn <= $1 AND end_asn >= $1
+		LIMIT 1
+	`
+
+	var record domain.Autnum
+	var statusJSON []byte
+	var created, updated time.Time
+
+	err := s.pool.QueryRow(context.Background(), query, asn).Scan(
+		&record.Handle, &record.StartASN, &record.EndASN,
+		&record.Name, &record.Type, &record.Country,
+		&statusJSON, &created, &updated,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("autnum lookup: %w", err)
+	}
+
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
+
+	return &record, nil
+}
+
+func (s *PostgresStore) SearchDomainsByName(pattern string, limit int) ([]domain.Domain, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, tld, status,
 		       created_at, updated_at, expires_at,
-		       registrant, admin, tech, billing
+		       registrant, admin, tech, billing,
+		       nameservers, secure_dns
 		FROM domains
 		WHERE ldh_name LIKE $1 OR unicode_name LIKE $1
 		LIMIT $2
@@ -166,29 +260,23 @@ func (s *PostgresStore) SearchDomainsByName(pattern string, limit int) ([]rdap.D
 	}
 	defer rows.Close()
 
-	var results []rdap.DomainRecord
+	var results []domain.Domain
 	for rows.Next() {
-		var record rdap.DomainRecord
-		var statusJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
-			&statusJSON, &record.CreatedAt, &record.UpdatedAt, &record.ExpiresAt,
-			&record.Registrant, &record.Admin, &record.Tech, &record.Billing,
-		); err != nil {
-			return nil, fmt.Errorf("scan domain: %w", err)
+		d, err := scanDomainRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(statusJSON, &record.Status)
-		results = append(results, record)
+		results = append(results, *d)
 	}
-
-	return results, nil
+	return results, rows.Err()
 }
 
-func (s *PostgresStore) SearchDomainsByNS(nsName string, limit int) ([]rdap.DomainRecord, error) {
+func (s *PostgresStore) SearchDomainsByNS(nsName string, limit int) ([]domain.Domain, error) {
 	query := `
 		SELECT d.handle, d.ldh_name, d.unicode_name, d.tld, d.status,
 		       d.created_at, d.updated_at, d.expires_at,
-		       d.registrant, d.admin, d.tech, d.billing
+		       d.registrant, d.admin, d.tech, d.billing,
+		       d.nameservers, d.secure_dns
 		FROM domains d
 		JOIN domain_nameservers dn ON d.handle = dn.domain_handle
 		JOIN nameservers n ON dn.ns_handle = n.handle
@@ -202,25 +290,70 @@ func (s *PostgresStore) SearchDomainsByNS(nsName string, limit int) ([]rdap.Doma
 	}
 	defer rows.Close()
 
-	var results []rdap.DomainRecord
+	var results []domain.Domain
 	for rows.Next() {
-		var record rdap.DomainRecord
-		var statusJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
-			&statusJSON, &record.CreatedAt, &record.UpdatedAt, &record.ExpiresAt,
-			&record.Registrant, &record.Admin, &record.Tech, &record.Billing,
-		); err != nil {
-			return nil, fmt.Errorf("scan domain: %w", err)
+		d, err := scanDomainRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(statusJSON, &record.Status)
-		results = append(results, record)
+		results = append(results, *d)
 	}
-
-	return results, nil
+	return results, rows.Err()
 }
 
-func (s *PostgresStore) SearchEntitiesByName(pattern string, limit int) ([]rdap.EntityRecord, error) {
+// domainRowScanner is implemented by both *pgx.Rows and *pgx.Row via Scan.
+type domainRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanDomainRow(row domainRowScanner) (*domain.Domain, error) {
+	var record domain.Domain
+	var statusJSON, nsJSON, sdJSON []byte
+	var created, updated, expires time.Time
+	var registrant, admin, tech, billing *string
+
+	if err := row.Scan(
+		&record.Handle, &record.LDHName, &record.UnicodeName, &record.TLD,
+		&statusJSON, &created, &updated, &expires,
+		&registrant, &admin, &tech, &billing,
+		&nsJSON, &sdJSON,
+	); err != nil {
+		return nil, fmt.Errorf("scan domain: %w", err)
+	}
+
+	record.Status = parseStatus(statusJSON)
+	record.ExpiresAt = expires
+	record.SecureDNS = parseSecureDNS(sdJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
+
+	record.Contacts = map[domain.ContactRole][]string{}
+	if registrant != nil {
+		record.Contacts[domain.RoleRegistrant] = []string{*registrant}
+		record.Registrar = *registrant
+	}
+	if admin != nil {
+		record.Contacts[domain.RoleAdministrative] = []string{*admin}
+	}
+	if tech != nil {
+		record.Contacts[domain.RoleTechnical] = []string{*tech}
+	}
+	if billing != nil {
+		record.Contacts[domain.RoleBilling] = []string{*billing}
+	}
+
+	if len(nsJSON) > 0 {
+		record.Nameservers = parseNameservers(nsJSON)
+	}
+
+	return &record, nil
+}
+
+func (s *PostgresStore) SearchContactsByName(pattern string, limit int) ([]domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
 		FROM entities
@@ -235,26 +368,18 @@ func (s *PostgresStore) SearchEntitiesByName(pattern string, limit int) ([]rdap.
 	}
 	defer rows.Close()
 
-	var results []rdap.EntityRecord
+	var results []domain.Contact
 	for rows.Next() {
-		var record rdap.EntityRecord
-		var rolesJSON, statusJSON, pidJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.VCardJSON, &rolesJSON, &statusJSON,
-			&record.CreatedAt, &record.UpdatedAt, &pidJSON,
-		); err != nil {
-			return nil, fmt.Errorf("scan entity: %w", err)
+		c, err := scanContactRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(rolesJSON, &record.Roles)
-		json.Unmarshal(statusJSON, &record.Status)
-		json.Unmarshal(pidJSON, &record.PublicIDs)
-		results = append(results, record)
+		results = append(results, *c)
 	}
-
-	return results, nil
+	return results, rows.Err()
 }
 
-func (s *PostgresStore) SearchEntitiesByHandle(pattern string, limit int) ([]rdap.EntityRecord, error) {
+func (s *PostgresStore) SearchContactsByHandle(pattern string, limit int) ([]domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
 		FROM entities
@@ -269,26 +394,56 @@ func (s *PostgresStore) SearchEntitiesByHandle(pattern string, limit int) ([]rda
 	}
 	defer rows.Close()
 
-	var results []rdap.EntityRecord
+	var results []domain.Contact
 	for rows.Next() {
-		var record rdap.EntityRecord
-		var rolesJSON, statusJSON, pidJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.VCardJSON, &rolesJSON, &statusJSON,
-			&record.CreatedAt, &record.UpdatedAt, &pidJSON,
-		); err != nil {
-			return nil, fmt.Errorf("scan entity: %w", err)
+		c, err := scanContactRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(rolesJSON, &record.Roles)
-		json.Unmarshal(statusJSON, &record.Status)
-		json.Unmarshal(pidJSON, &record.PublicIDs)
-		results = append(results, record)
+		results = append(results, *c)
 	}
-
-	return results, nil
+	return results, rows.Err()
 }
 
-func (s *PostgresStore) SearchNameserversByName(pattern string, limit int) ([]rdap.NameserverRecord, error) {
+func scanContactRow(row domainRowScanner) (*domain.Contact, error) {
+	var record domain.Contact
+	var rolesJSON, statusJSON, pidJSON []byte
+	var vcardJSON *string
+	var created, updated time.Time
+
+	if err := row.Scan(
+		&record.Handle, &vcardJSON, &rolesJSON, &statusJSON,
+		&created, &updated, &pidJSON,
+	); err != nil {
+		return nil, fmt.Errorf("scan entity: %w", err)
+	}
+
+	var roles []string
+	json.Unmarshal(rolesJSON, &roles)
+	for _, r := range roles {
+		record.Roles = append(record.Roles, domain.ContactRole(r))
+	}
+	record.Status = parseStatus(statusJSON)
+
+	var pids []domain.PublicID
+	json.Unmarshal(pidJSON, &pids)
+	record.PublicIDs = pids
+
+	if vcardJSON != nil && *vcardJSON != "" {
+		record.VCard = parseVCardJSON(*vcardJSON)
+	}
+
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
+
+	return &record, nil
+}
+
+func (s *PostgresStore) SearchNameserversByName(pattern string, limit int) ([]domain.NameServer, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
 		FROM nameservers
@@ -303,27 +458,18 @@ func (s *PostgresStore) SearchNameserversByName(pattern string, limit int) ([]rd
 	}
 	defer rows.Close()
 
-	var results []rdap.NameserverRecord
+	var results []domain.NameServer
 	for rows.Next() {
-		var record rdap.NameserverRecord
-		var ipv4JSON, ipv6JSON, statusJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.LDHName, &record.UnicodeName,
-			&ipv4JSON, &ipv6JSON, &statusJSON,
-			&record.CreatedAt, &record.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan nameserver: %w", err)
+		n, err := scanNameserverRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(ipv4JSON, &record.IPV4)
-		json.Unmarshal(ipv6JSON, &record.IPV6)
-		json.Unmarshal(statusJSON, &record.Status)
-		results = append(results, record)
+		results = append(results, *n)
 	}
-
-	return results, nil
+	return results, rows.Err()
 }
 
-func (s *PostgresStore) SearchNameserversByIP(ip string, limit int) ([]rdap.NameserverRecord, error) {
+func (s *PostgresStore) SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error) {
 	query := `
 		SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
 		FROM nameservers
@@ -338,24 +484,41 @@ func (s *PostgresStore) SearchNameserversByIP(ip string, limit int) ([]rdap.Name
 	}
 	defer rows.Close()
 
-	var results []rdap.NameserverRecord
+	var results []domain.NameServer
 	for rows.Next() {
-		var record rdap.NameserverRecord
-		var ipv4JSON, ipv6JSON, statusJSON []byte
-		if err := rows.Scan(
-			&record.Handle, &record.LDHName, &record.UnicodeName,
-			&ipv4JSON, &ipv6JSON, &statusJSON,
-			&record.CreatedAt, &record.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan nameserver: %w", err)
+		n, err := scanNameserverRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		json.Unmarshal(ipv4JSON, &record.IPV4)
-		json.Unmarshal(ipv6JSON, &record.IPV6)
-		json.Unmarshal(statusJSON, &record.Status)
-		results = append(results, record)
+		results = append(results, *n)
+	}
+	return results, rows.Err()
+}
+
+func scanNameserverRow(row domainRowScanner) (*domain.NameServer, error) {
+	var record domain.NameServer
+	var ipv4JSON, ipv6JSON, statusJSON []byte
+	var created, updated time.Time
+
+	if err := row.Scan(
+		&record.Handle, &record.LDHName, &record.UnicodeName,
+		&ipv4JSON, &ipv6JSON, &statusJSON,
+		&created, &updated,
+	); err != nil {
+		return nil, fmt.Errorf("scan nameserver: %w", err)
 	}
 
-	return results, nil
+	json.Unmarshal(ipv4JSON, &record.IPV4)
+	json.Unmarshal(ipv6JSON, &record.IPV6)
+	record.Status = parseStatus(statusJSON)
+	record.Metadata = domain.Metadata{
+		Version:   1,
+		CreatedAt: created,
+		UpdatedAt: updated,
+		Source:    "postgres",
+	}
+
+	return &record, nil
 }
 
 func (s *PostgresStore) Ping() error {

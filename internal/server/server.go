@@ -12,6 +12,7 @@ import (
 	"github.com/rdap-server/rdap/internal/config"
 	"github.com/rdap-server/rdap/internal/handlers"
 	"github.com/rdap-server/rdap/internal/middleware"
+	"github.com/rdap-server/rdap/internal/service"
 	"github.com/rdap-server/rdap/internal/store"
 	"go.uber.org/zap"
 )
@@ -67,7 +68,8 @@ func New(cfg *config.Config, store store.Interface, logger *zap.Logger) *Server 
 	r.Use(middleware.Metrics)
 
 	// Register handlers
-	handler := handlers.New(store, cfg.RDAP, cfg.Server.Port)
+	svc := service.New(store, cfg.RDAP)
+	handler := handlers.New(svc, cfg.RDAP, cfg.Server.Port)
 	handler.RegisterRoutes(r)
 
 	// Health check

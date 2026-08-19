@@ -4,20 +4,26 @@ import (
 	"fmt"
 
 	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/rdap"
+	"github.com/rdap-server/rdap/internal/domain"
 )
 
+// Interface is the storage adapter boundary. It produces canonical registry
+// objects (internal/domain) rather than RDAP wire records. The RDAP wire format
+// is derived by the query service (internal/service), so storage stays
+// decoupled from the protocol representation and a real registry can back it
+// with its own model.
 type Interface interface {
-	LookupDomain(name string) (*rdap.DomainRecord, error)
-	LookupEntity(handle string) (*rdap.EntityRecord, error)
-	LookupNameserver(name string) (*rdap.NameserverRecord, error)
-	LookupIPNetwork(cidr string) (*rdap.IPNetworkRecord, error)
-	SearchDomainsByName(pattern string, limit int) ([]rdap.DomainRecord, error)
-	SearchDomainsByNS(nsName string, limit int) ([]rdap.DomainRecord, error)
-	SearchEntitiesByName(pattern string, limit int) ([]rdap.EntityRecord, error)
-	SearchEntitiesByHandle(pattern string, limit int) ([]rdap.EntityRecord, error)
-	SearchNameserversByName(pattern string, limit int) ([]rdap.NameserverRecord, error)
-	SearchNameserversByIP(ip string, limit int) ([]rdap.NameserverRecord, error)
+	LookupDomain(name string) (*domain.Domain, error)
+	LookupContact(handle string) (*domain.Contact, error)
+	LookupNameserver(name string) (*domain.NameServer, error)
+	LookupIPNetwork(cidr string) (*domain.IPNetwork, error)
+	LookupAutnum(asn int) (*domain.Autnum, error)
+	SearchDomainsByName(pattern string, limit int) ([]domain.Domain, error)
+	SearchDomainsByNS(nsName string, limit int) ([]domain.Domain, error)
+	SearchContactsByName(pattern string, limit int) ([]domain.Contact, error)
+	SearchContactsByHandle(pattern string, limit int) ([]domain.Contact, error)
+	SearchNameserversByName(pattern string, limit int) ([]domain.NameServer, error)
+	SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error)
 	Ping() error
 	Close() error
 }

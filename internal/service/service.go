@@ -1,0 +1,431 @@
+// Package service implements the application/query layer between the canonical
+// registry data model (internal/domain) and the RDAP wire representation
+// (internal/rdap). Handlers depend on this service rather than on storage
+// directly, so a real registry can plug its own model into the service boundary.
+//
+// The mapping functions in this package deliberately reproduce the exact RDAP
+// output shape (jCard, entities, links, events, notices, conformance) that is
+// validated against the ICANN RDAP Conformance Tool. Changing RDAP behavior here
+// is the single place that affects wire output.
+package service
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/rdap-server/rdap/internal/config"
+	"github.com/rdap-server/rdap/internal/domain"
+	"github.com/rdap-server/rdap/internal/rdap"
+	"github.com/rdap-server/rdap/internal/store"
+)
+
+// Service is the query service that resolves domain objects and maps them to
+// RDAP responses.
+type Service struct {
+	store store.Interface
+	cfg   config.RDAPConfig
+}
+
+// New builds a query service backed by the given store.
+func New(st store.Interface, cfg config.RDAPConfig) *Service {
+	return &Service{store: st, cfg: cfg}
+}
+
+// DomainToRDAP maps a canonical domain aggregate to the RDAP domain object.
+// The output must remain byte-compatible with what passes the ICANN
+// conformance tool (2024 profile).
+func (s *Service) DomainToRDAP(d *domain.Domain, requestURL string) rdap.Domain {
+	return domainToRDAP(d, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode)
+}
+
+// EntityToRDAP maps a canonical contact to the RDAP entity object.
+func (s *Service) EntityToRDAP(c *domain.Contact, requestURL string) rdap.Entity {
+	return entityToRDAP(c, s.cfg.BaseURL)
+}
+
+// NameserverToRDAP maps a canonical nameserver to the RDAP nameserver object.
+func (s *Service) NameserverToRDAP(ns *domain.NameServer, requestURL string) rdap.Nameserver {
+	return nameserverToRDAP(ns, s.cfg.BaseURL)
+}
+
+// IPNetworkToRDAP maps a canonical IP network to the RDAP ip network object.
+func (s *Service) IPNetworkToRDAP(n *domain.IPNetwork, requestURL string) rdap.IPNetwork {
+	return ipNetworkToRDAP(n, s.cfg.BaseURL)
+}
+
+// LookupDomain returns the RDAP domain object for a domain name.
+func (s *Service) LookupDomain(name string, requestURL string) (rdap.Domain, error) {
+	d, err := s.store.LookupDomain(name)
+	if err != nil {
+		return rdap.Domain{}, err
+	}
+	return s.DomainToRDAP(d, requestURL), nil
+}
+
+// LookupEntity returns the RDAP entity object for a contact handle.
+func (s *Service) LookupEntity(handle string, requestURL string) (rdap.Entity, error) {
+	c, err := s.store.LookupContact(handle)
+	if err != nil {
+		return rdap.Entity{}, err
+	}
+	return s.EntityToRDAP(c, requestURL), nil
+}
+
+// LookupNameserver returns the RDAP nameserver object for a nameserver name.
+func (s *Service) LookupNameserver(name string, requestURL string) (rdap.Nameserver, error) {
+	ns, err := s.store.LookupNameserver(strings.ToLower(name))
+	if err != nil {
+		return rdap.Nameserver{}, err
+	}
+	return s.NameserverToRDAP(ns, requestURL), nil
+}
+
+// LookupIPNetwork returns the RDAP IP network object for a CIDR.
+func (s *Service) LookupIPNetwork(cidr string, requestURL string) (rdap.IPNetwork, error) {
+	n, err := s.store.LookupIPNetwork(cidr)
+	if err != nil {
+		return rdap.IPNetwork{}, err
+	}
+	return s.IPNetworkToRDAP(n, requestURL), nil
+}
+
+// SearchDomainsByName searches domains by name pattern.
+func (s *Service) SearchDomainsByName(pattern string, limit int, requestURL string) ([]rdap.Domain, error) {
+	domains, err := s.store.SearchDomainsByName(pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Domain, 0, len(domains))
+	for i := range domains {
+		out = append(out, s.DomainToRDAP(&domains[i], requestURL))
+	}
+	return out, nil
+}
+
+// SearchDomainsByNS searches domains by nameserver.
+func (s *Service) SearchDomainsByNS(nsName string, limit int, requestURL string) ([]rdap.Domain, error) {
+	domains, err := s.store.SearchDomainsByNS(nsName, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Domain, 0, len(domains))
+	for i := range domains {
+		out = append(out, s.DomainToRDAP(&domains[i], requestURL))
+	}
+	return out, nil
+}
+
+// SearchEntitiesByName searches contacts by name pattern.
+func (s *Service) SearchEntitiesByName(pattern string, limit int, requestURL string) ([]rdap.Entity, error) {
+	contacts, err := s.store.SearchContactsByName(pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Entity, 0, len(contacts))
+	for i := range contacts {
+		out = append(out, s.EntityToRDAP(&contacts[i], requestURL))
+	}
+	return out, nil
+}
+
+// SearchEntitiesByHandle searches contacts by handle pattern.
+func (s *Service) SearchEntitiesByHandle(pattern string, limit int, requestURL string) ([]rdap.Entity, error) {
+	contacts, err := s.store.SearchContactsByHandle(pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Entity, 0, len(contacts))
+	for i := range contacts {
+		out = append(out, s.EntityToRDAP(&contacts[i], requestURL))
+	}
+	return out, nil
+}
+
+// SearchNameserversByName searches nameservers by name pattern.
+func (s *Service) SearchNameserversByName(pattern string, limit int, requestURL string) ([]rdap.Nameserver, error) {
+	nameservers, err := s.store.SearchNameserversByName(pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Nameserver, 0, len(nameservers))
+	for i := range nameservers {
+		out = append(out, s.NameserverToRDAP(&nameservers[i], requestURL))
+	}
+	return out, nil
+}
+
+// SearchNameserversByIP searches nameservers by IP address.
+func (s *Service) SearchNameserversByIP(ip string, limit int, requestURL string) ([]rdap.Nameserver, error) {
+	nameservers, err := s.store.SearchNameserversByIP(ip, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Nameserver, 0, len(nameservers))
+	for i := range nameservers {
+		out = append(out, s.NameserverToRDAP(&nameservers[i], requestURL))
+	}
+	return out, nil
+}
+
+// BaseURL returns the configured RDAP base URL.
+func (s *Service) BaseURL() string {
+	return s.cfg.BaseURL
+}
+
+func statusValues(status []domain.Status) []string {
+	out := make([]string, 0, len(status))
+	for _, st := range status {
+		out = append(out, st.Value)
+	}
+	return out
+}
+
+// domainToRDAP reproduces the exact RDAP domain object previously produced by
+// the handlers. It mirrors the ICANN-validated serializer.
+func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode string) rdap.Domain {
+	nameservers := make([]rdap.Nameserver, len(d.Nameservers))
+	for i, ns := range d.Nameservers {
+		nameservers[i] = rdap.Nameserver{
+			Common: rdap.Common{
+				ObjectClassName: "nameserver",
+				Handle:          ns.Handle,
+				Status:          statusValues(ns.Status),
+				Links: []rdap.Link{{
+					Value: fmt.Sprintf("%s/nameserver/%s", baseURL, ns.LDHName),
+					Rel:   "self",
+					Href:  fmt.Sprintf("%s/nameserver/%s", baseURL, ns.LDHName),
+					Type:  "application/rdap+json",
+				}},
+			},
+			LDHName:     ns.LDHName,
+			UnicodeName: ns.UnicodeName,
+			IPAddresses: &rdap.IPAddrSet{
+				V4: ns.IPV4,
+				V6: ns.IPV6,
+			},
+		}
+	}
+
+	secureDNS := &rdap.SecureDNS{
+		ZoneSigned:       false,
+		DelegationSigned: false,
+	}
+	if d.SecureDNS != nil {
+		secureDNS = &rdap.SecureDNS{
+			ZoneSigned:       d.SecureDNS.ZoneSigned,
+			DelegationSigned: d.SecureDNS.DelegationSigned,
+			MaxSigLife:       d.SecureDNS.MaxSigLife,
+		}
+	}
+
+	events := []rdap.Event{
+		{EventAction: "registration", EventDate: rdap.FormatTime(d.Metadata.CreatedAt)},
+		{EventAction: "last changed", EventDate: rdap.FormatTime(d.Metadata.UpdatedAt)},
+		{EventAction: "expiration", EventDate: rdap.FormatTime(d.ExpiresAt)},
+		{EventAction: "last update of RDAP database", EventDate: rdap.FormatTime(d.Metadata.UpdatedAt)},
+	}
+	if mode == "registrar" {
+		// Required by the 2024 gTLD Response Profile for registrar servers (-65600).
+		events = append(events, rdap.Event{EventAction: "registrar expiration", EventDate: rdap.FormatTime(d.ExpiresAt)})
+	}
+
+	registrarEntity := rdap.Entity{
+		Common: rdap.Common{
+			ObjectClassName: "entity",
+			Handle:          d.Registrar,
+			Status:          []string{"active"},
+			Links: []rdap.Link{{
+				Value: registrarBaseURL,
+				Rel:   "about",
+				Href:  registrarBaseURL,
+				Type:  "application/rdap+json",
+			}},
+		},
+		Roles: []string{"registrar"},
+		VCardArray: []interface{}{
+			"vcard",
+			[]interface{}{
+				[]interface{}{"version", map[string]interface{}{}, "text", "4.0"},
+				[]interface{}{"fn", map[string]interface{}{}, "text", "Example Registrar Inc."},
+				[]interface{}{"adr", map[string]interface{}{"cc": "US"}, "text", []interface{}{"", "", "123 Maple Ave", "Los Angeles", "CA", "90210", ""}},
+			},
+		},
+		PublicIDs: []rdap.PublicID{
+			{Type: "IANA Registrar ID", Identifier: d.Registrar},
+		},
+	}
+
+	// Abuse entity inside registrar entity with tel and email.
+	abuseEntity := rdap.Entity{
+		Common: rdap.Common{
+			ObjectClassName: "entity",
+			Handle:          "ABUSE-NAME",
+			Status:          []string{"active"},
+		},
+		Roles: []string{"abuse"},
+		VCardArray: []interface{}{
+			"vcard",
+			[]interface{}{
+				[]interface{}{"version", map[string]interface{}{}, "text", "4.0"},
+				[]interface{}{"fn", map[string]interface{}{}, "text", "Abuse Contact"},
+				[]interface{}{"tel", map[string]interface{}{"type": []interface{}{"voice"}}, "uri", "tel:+1-555-123-4567"},
+				[]interface{}{"email", map[string]interface{}{}, "text", "abuse@example.com"},
+			},
+		},
+	}
+	registrarEntity.Common.Entities = append(registrarEntity.Common.Entities, abuseEntity)
+
+	// Registrant entity required by the 2024 gTLD Response Profile (section 2.7.2).
+	registrantEntity := rdap.Entity{
+		Common: rdap.Common{
+			ObjectClassName: "entity",
+			Handle:          "REG1-NAME",
+			Status:          []string{"active"},
+		},
+		Roles: []string{"registrant"},
+		VCardArray: []interface{}{
+			"vcard",
+			[]interface{}{
+				[]interface{}{"version", map[string]interface{}{}, "text", "4.0"},
+				[]interface{}{"fn", map[string]interface{}{}, "text", "Example Registrant"},
+				[]interface{}{"org", map[string]interface{}{}, "text", "Example Organization"},
+				[]interface{}{"adr", map[string]interface{}{"cc": "US"}, "text", []interface{}{"", "", "123 Elm Street", "Springfield", "IL", "62701", ""}},
+				[]interface{}{"tel", map[string]interface{}{"type": []interface{}{"voice"}}, "uri", "tel:+1-217-555-0132"},
+				[]interface{}{"email", map[string]interface{}{}, "text", "registrant@example.com"},
+			},
+		},
+	}
+
+	domainEntities := []rdap.Entity{registrarEntity}
+	if mode == "registrar" {
+		// Registrant data is served by registrars; required by the 2024 gTLD
+		// Response Profile section 2.7.2 for registrar servers (-63000).
+		domainEntities = append(domainEntities, registrantEntity)
+	}
+
+	out := rdap.Domain{
+		Common: rdap.Common{
+			ObjectClassName: "domain",
+			Handle:          d.Handle,
+			Status:          statusValues(d.Status),
+			Events:          events,
+			Entities:        domainEntities,
+			Links: []rdap.Link{{
+				Value: requestURL,
+				Rel:   "self",
+				Href:  fmt.Sprintf("%s/domain/%s", baseURL, d.LDHName),
+				Type:  "application/rdap+json",
+			}, {
+				Value: requestURL,
+				Rel:   "related",
+				Href:  fmt.Sprintf("%s/domain/%s", strings.TrimRight(registrarBaseURL, "/"), d.LDHName),
+				Type:  "application/rdap+json",
+			}},
+			Port43: "",
+		},
+		LDHName:     d.LDHName,
+		UnicodeName: d.UnicodeName,
+		Nameservers: nameservers,
+		SecureDNS:   secureDNS,
+	}
+	out.Conformance = rdap.NewConformance2024()
+	out.Notices = rdap.NewNoticesWithICANN(requestURL, baseURL)
+
+	return out
+}
+
+func entityToRDAP(c *domain.Contact, baseURL string) rdap.Entity {
+	return rdap.Entity{
+		Common: rdap.Common{
+			ObjectClassName: "entity",
+			Handle:          c.Handle,
+			Status:          statusValues(c.Status),
+			Events: []rdap.Event{
+				{EventAction: "registration", EventDate: rdap.FormatTime(c.Metadata.CreatedAt)},
+				{EventAction: "last changed", EventDate: rdap.FormatTime(c.Metadata.UpdatedAt)},
+			},
+			Links: []rdap.Link{{
+				Value: fmt.Sprintf("%s/entity/%s", baseURL, c.Handle),
+				Rel:   "self",
+				Href:  fmt.Sprintf("%s/entity/%s", baseURL, c.Handle),
+				Type:  "application/rdap+json",
+			}},
+		},
+		Roles:     roleStrings(c.Roles),
+		PublicIDs: publicIDsToRDAP(c.PublicIDs),
+	}
+}
+
+func publicIDsToRDAP(ids []domain.PublicID) []rdap.PublicID {
+	out := make([]rdap.PublicID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, rdap.PublicID{Type: id.Type, Identifier: id.Identifier})
+	}
+	return out
+}
+
+func nameserverToRDAP(ns *domain.NameServer, baseURL string) rdap.Nameserver {
+	return rdap.Nameserver{
+		Common: rdap.Common{
+			ObjectClassName: "nameserver",
+			Handle:          ns.Handle,
+			Status:          statusValues(ns.Status),
+			Events: []rdap.Event{
+				{EventAction: "registration", EventDate: rdap.FormatTime(ns.Metadata.CreatedAt)},
+				{EventAction: "last changed", EventDate: rdap.FormatTime(ns.Metadata.UpdatedAt)},
+			},
+			Links: []rdap.Link{{
+				Value: fmt.Sprintf("%s/nameserver/%s", baseURL, ns.LDHName),
+				Rel:   "self",
+				Href:  fmt.Sprintf("%s/nameserver/%s", baseURL, ns.LDHName),
+				Type:  "application/rdap+json",
+			}},
+		},
+		LDHName:     ns.LDHName,
+		UnicodeName: ns.UnicodeName,
+		IPAddresses: &rdap.IPAddrSet{
+			V4: ns.IPV4,
+			V6: ns.IPV6,
+		},
+	}
+}
+
+func ipNetworkToRDAP(n *domain.IPNetwork, baseURL string) rdap.IPNetwork {
+	cidr := ""
+	if len(n.CIDR) > 0 {
+		cidr = n.CIDR[0]
+	}
+	return rdap.IPNetwork{
+		Common: rdap.Common{
+			ObjectClassName: "ip network",
+			Handle:          n.Handle,
+			Status:          statusValues(n.Status),
+			Events: []rdap.Event{
+				{EventAction: "registration", EventDate: rdap.FormatTime(n.Metadata.CreatedAt)},
+				{EventAction: "last changed", EventDate: rdap.FormatTime(n.Metadata.UpdatedAt)},
+			},
+			Links: []rdap.Link{{
+				Value: fmt.Sprintf("%s/ip/%s", baseURL, cidr),
+				Rel:   "self",
+				Href:  fmt.Sprintf("%s/ip/%s", baseURL, cidr),
+				Type:  "application/rdap+json",
+			}},
+		},
+		StartAddress: n.StartAddress,
+		EndAddress:   n.EndAddress,
+		IPVersion:    n.IPVersion,
+		CIDR:         n.CIDR,
+		Name:         n.Name,
+		Type:         n.Type,
+		Country:      n.Country,
+		ParentHandle: "",
+	}
+}
+
+func roleStrings(roles []domain.ContactRole) []string {
+	out := make([]string, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, string(r))
+	}
+	return out
+}
