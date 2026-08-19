@@ -1,4 +1,4 @@
-# RDAP Server — MySQL example configuration.
+﻿# RDAP Server â€” MySQL example configuration.
 # Load the schema + seed first:
 #   mysql -u rdap -p < examples/mysql/schema.sql
 #   mysql -u rdap -p < examples/mysql/seed.sql
@@ -45,6 +45,19 @@ rdap:
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.1"
   version: "1.1.0"
+  # Customize the Terms of Service notice (card + link). Optional.
+  tos:
+    title: "Terms of Service"
+    description:
+      - "Registration data provided by Example Registrar, Inc."
+    url: "https://rdap.example.com/help"
+  # Optional registrar/registry-specific notices appended to responses.
+  custom_notices:
+    - title: "Data Policy"
+      description:
+        - "Contact data is published per the ICANN Registration Data Policy."
+      url: "https://rdap.example.com/privacy"
+      rel: "privacy-policy"
 
 auth:
   enabled: false
@@ -69,3 +82,4 @@ rate_limiting:
     - "10.0.0.0/8"
     - "172.16.0.0/12"
     - "192.168.0.0/16"
+

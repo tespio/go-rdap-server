@@ -46,6 +46,31 @@ type RDAPConfig struct {
 	Port43Whois      string   `yaml:"port43_whois"`
 	ServerName       string   `yaml:"server_name"`
 	Version          string   `yaml:"version"`
+	// ToS customizes the Terms of Service notice text and link. Optional; when
+	// unset a generic notice is used.
+	ToS *ToSConfig `yaml:"tos"`
+	// CustomNotices appends registrar/registry-specific notices to responses.
+	// Optional. The ICANN-mandated notices (Status Codes, RDDS Inaccuracy) are
+	// always included regardless of this setting.
+	CustomNotices []CustomNoticeConfig `yaml:"custom_notices"`
+}
+
+// ToSConfig customizes the Terms of Service notice.
+type ToSConfig struct {
+	// Title overrides the notice title (default "Terms of Service").
+	Title string `yaml:"title"`
+	// Description is the notice body text (e.g. company name and terms).
+	Description []string `yaml:"description"`
+	// URL is the terms-of-service link target. If empty, links to /help.
+	URL string `yaml:"url"`
+}
+
+// CustomNoticeConfig is a registrar/registry-specific RDAP notice.
+type CustomNoticeConfig struct {
+	Title       string   `yaml:"title"`
+	Description []string `yaml:"description"`
+	URL         string   `yaml:"url"`
+	Rel         string   `yaml:"rel"`
 }
 
 type AuthConfig struct {

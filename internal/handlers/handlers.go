@@ -71,8 +71,12 @@ func (h *Handler) requestURL(r *http.Request) string {
 	return u.String()
 }
 
+func (h *Handler) noticeOpts() *rdap.NoticeOptions {
+	return service.NoticeOptionsFromConfig(h.cfg)
+}
+
 func (h *Handler) Help(w http.ResponseWriter, r *http.Request) {
-	help := rdap.NewHelp(h.cfg.BaseURL)
+	help := rdap.NewHelp(h.cfg.BaseURL, h.noticeOpts())
 	writeJSON(w, http.StatusOK, help)
 }
 
@@ -115,7 +119,7 @@ func (h *Handler) LookupEntity(w http.ResponseWriter, r *http.Request) {
 	resp := rdap.EntityResponse{
 		Entity:      entity,
 		Conformance: rdap.NewConformance(),
-		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL),
+		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -137,7 +141,7 @@ func (h *Handler) LookupNameserver(w http.ResponseWriter, r *http.Request) {
 	resp := rdap.NameserverResponse{
 		Nameserver:  ns,
 		Conformance: rdap.NewConformance(),
-		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL),
+		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -172,7 +176,7 @@ func (h *Handler) LookupIPNetwork(w http.ResponseWriter, r *http.Request) {
 	resp := rdap.IPNetworkResponse{
 		IPNetwork:   ipnet,
 		Conformance: rdap.NewConformance(),
-		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL),
+		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -202,7 +206,7 @@ func (h *Handler) LookupAutnum(w http.ResponseWriter, r *http.Request) {
 			Name:        fmt.Sprintf("AS%d", asn),
 		},
 		Conformance: rdap.NewConformance(),
-		Notices:     rdap.NewNoticesWithICANN(h.requestURL(r), h.cfg.BaseURL),
+		Notices:     rdap.NewNoticesWithICANN(h.requestURL(r), h.cfg.BaseURL, h.noticeOpts()),
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -246,7 +250,7 @@ func (h *Handler) SearchDomains(w http.ResponseWriter, r *http.Request) {
 	resp := rdap.DomainSearchResult{
 		Conformance:         rdap.NewConformance(),
 		DomainSearchResults: results,
-		Notices:             rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL),
+		Notices:             rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -290,7 +294,7 @@ func (h *Handler) SearchEntities(w http.ResponseWriter, r *http.Request) {
 	resp := rdap.EntitySearchResult{
 		Conformance:         rdap.NewConformance(),
 		EntitySearchResults: results,
-		Notices:             rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL),
+		Notices:             rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -334,7 +338,7 @@ func (h *Handler) SearchNameservers(w http.ResponseWriter, r *http.Request) {
 	resp := rdap.NameserverSearchResult{
 		Conformance:              rdap.NewConformance(),
 		NameserverSearchResults:  results,
-		Notices:                  rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL),
+		Notices:                  rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 
 	writeJSON(w, http.StatusOK, resp)

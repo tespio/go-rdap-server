@@ -203,18 +203,32 @@ func NewConformance2024() Conformance {
 	}
 }
 
-func NewNotices(baseURL string) []Notice {
+// NoticeOptions carries optional registrar/registry customization for notices.
+// The ICANN-mandated notices (Status Codes, RDDS Inaccuracy Complaint Form) are
+// always emitted regardless; this only customizes the Terms of Service notice
+// and appends registrar-specific notices.
+type NoticeOptions struct {
+	// ToSTitle overrides the Terms of Service notice title.
+	ToSTitle string
+	// ToSDescription is the Terms of Service notice body text.
+	ToSDescription []string
+	// ToSURL is the terms-of-service link target. If empty, links to /help.
+	ToSURL string
+	// Custom is an optional list of registrar/registry-specific notices.
+	Custom []CustomNotice
+}
+
+// CustomNotice is a registrar/registry-specific notice appended to responses.
+type CustomNotice struct {
+	Title       string
+	Description []string
+	URL         string
+	Rel         string
+}
+
+func NewNotices(baseURL string, opts *NoticeOptions) []Notice {
 	return []Notice{
-		{
-			Title:       "Terms of Service",
-			Description: []string{"Use of this RDAP server is subject to the registrar's terms of service."},
-			Links: []Link{{
-				Value: baseURL,
-				Rel:   "terms-of-service",
-				Href:  fmt.Sprintf("%s/help", baseURL),
-				Type:  "application/rdap+json",
-			}},
-		},
+		buildToSNotice(baseURL, baseURL, opts),
 		{
 			Title:       "Rate Limiting",
 			Description: []string{"Access to this RDAP server is rate-limited. Excessive queries may be throttled."},
@@ -228,18 +242,9 @@ func NewNotices(baseURL string) []Notice {
 	}
 }
 
-func NewNoticesWithICANN(requestURL, baseURL string) []Notice {
-	return []Notice{
-		{
-			Title:       "Terms of Service",
-			Description: []string{"Use of this RDAP server is subject to the registrar's terms of service."},
-			Links: []Link{{
-				Value: requestURL,
-				Rel:   "terms-of-service",
-				Href:  fmt.Sprintf("%s/help", baseURL),
-				Type:  "application/rdap+json",
-			}},
-		},
+func NewNoticesWithICANN(requestURL, baseURL string, opts *NoticeOptions) []Notice {
+	notices := []Notice{
+		buildToSNotice(requestURL, baseURL, opts),
 		{
 			Title:       "Rate Limiting",
 			Description: []string{"Access to this RDAP server is rate-limited. Excessive queries may be throttled."},
@@ -271,11 +276,65 @@ func NewNoticesWithICANN(requestURL, baseURL string) []Notice {
 			}},
 		},
 	}
+
+	if opts != nil {
+		for _, c := range opts.Custom {
+			if c.URL == "" {
+				c.URL = fmt.Sprintf("%s/help", baseURL)
+			}
+			rel := c.Rel
+			if rel == "" {
+				rel = "terms-of-service"
+			}
+			notices = append(notices, Notice{
+				Title:       c.Title,
+				Description: c.Description,
+				Links: []Link{{
+					Value: requestURL,
+					Rel:   rel,
+					Href:  c.URL,
+					Type:  "text/html",
+				}},
+			})
+		}
+	}
+
+	return notices
 }
 
-func NewHelp(baseURL string) Help {
+// buildToSNotice returns the Terms of Service notice, honoring customization.
+func buildToSNotice(requestURL, baseURL string, opts *NoticeOptions) Notice {
+	title := "Terms of Service"
+	desc := []string{"Use of this RDAP server is subject to the registrar's terms of service."}
+	href := fmt.Sprintf("%s/help", baseURL)
+
+	if opts != nil {
+		if opts.ToSTitle != "" {
+			title = opts.ToSTitle
+		}
+		if len(opts.ToSDescription) > 0 {
+			desc = opts.ToSDescription
+		}
+		if opts.ToSURL != "" {
+			href = opts.ToSURL
+		}
+	}
+
+	return Notice{
+		Title:       title,
+		Description: desc,
+		Links: []Link{{
+			Value: requestURL,
+			Rel:   "terms-of-service",
+			Href:  href,
+			Type:  "text/html",
+		}},
+	}
+}
+
+func NewHelp(baseURL string, opts *NoticeOptions) Help {
 	return Help{
 		Conformance: NewConformance(),
-		Notices:     NewNotices(baseURL),
+		Notices:     NewNotices(baseURL, opts),
 	}
 }

@@ -35,7 +35,7 @@ func New(st store.Interface, cfg config.RDAPConfig) *Service {
 // The output must remain byte-compatible with what passes the ICANN
 // conformance tool (2024 profile).
 func (s *Service) DomainToRDAP(d *domain.Domain, requestURL string) rdap.Domain {
-	return domainToRDAP(d, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode)
+	return domainToRDAP(d, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions())
 }
 
 // EntityToRDAP maps a canonical contact to the RDAP entity object.
@@ -172,6 +172,32 @@ func (s *Service) BaseURL() string {
 	return s.cfg.BaseURL
 }
 
+// NoticeOptions returns the RDAP notice options derived from the RDAP config.
+// It converts the registrar/registry customization (ToS text, custom notices)
+// into the rdap package's notice options.
+func (s *Service) NoticeOptions() *rdap.NoticeOptions {
+	return NoticeOptionsFromConfig(s.cfg)
+}
+
+// NoticeOptionsFromConfig converts RDAP config customization into rdap.NoticeOptions.
+func NoticeOptionsFromConfig(cfg config.RDAPConfig) *rdap.NoticeOptions {
+	opts := &rdap.NoticeOptions{}
+	if cfg.ToS != nil {
+		opts.ToSTitle = cfg.ToS.Title
+		opts.ToSDescription = cfg.ToS.Description
+		opts.ToSURL = cfg.ToS.URL
+	}
+	for _, c := range cfg.CustomNotices {
+		opts.Custom = append(opts.Custom, rdap.CustomNotice{
+			Title:       c.Title,
+			Description: c.Description,
+			URL:         c.URL,
+			Rel:         c.Rel,
+		})
+	}
+	return opts
+}
+
 func statusValues(status []domain.Status) []string {
 	out := make([]string, 0, len(status))
 	for _, st := range status {
@@ -182,7 +208,7 @@ func statusValues(status []domain.Status) []string {
 
 // domainToRDAP reproduces the exact RDAP domain object previously produced by
 // the handlers. It mirrors the ICANN-validated serializer.
-func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode string) rdap.Domain {
+func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode string, opts *rdap.NoticeOptions) rdap.Domain {
 	nameservers := make([]rdap.Nameserver, len(d.Nameservers))
 	for i, ns := range d.Nameservers {
 		nameservers[i] = rdap.Nameserver{
@@ -329,7 +355,7 @@ func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode 
 		SecureDNS:   secureDNS,
 	}
 	out.Conformance = rdap.NewConformance2024()
-	out.Notices = rdap.NewNoticesWithICANN(requestURL, baseURL)
+	out.Notices = rdap.NewNoticesWithICANN(requestURL, baseURL, opts)
 
 	return out
 }

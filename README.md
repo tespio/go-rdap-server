@@ -157,6 +157,21 @@ rdap:
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.1"
   version: "1.1.0"
+  # Customize the Terms of Service notice (card + link) in responses.
+  # Set the URL to your real terms page, like a registrar's agreement.
+  tos:
+    title: "Terms of Service"
+    description:
+      - "Registration data for example.com is provided by Example Registrar, Inc."
+    url: "https://rdap.example.com/help"
+  # Optional registrar/registry-specific notices appended to every response.
+  # The ICANN-mandated notices (Status Codes, RDDS Inaccuracy) are always included.
+  custom_notices:
+    - title: "Data Policy"
+      description:
+        - "Contact data is published per the ICANN Registration Data Policy."
+      url: "https://rdap.example.com/privacy"
+      rel: "privacy-policy"
 
 auth:
   enabled: false
@@ -196,6 +211,10 @@ rate_limiting:
 | `rdap.port43_whois` | *(unset)* | Whois server host for the `port43` member |
 | `rdap.server_name` | *(unset)* | Server display name |
 | `rdap.version` | `1.1` | Server version string |
+| `rdap.tos.title` | `Terms of Service` | Title of the Terms of Service notice card |
+| `rdap.tos.description` | *(generic)* | Body text of the ToS notice (company name, terms) |
+| `rdap.tos.url` | `{base_url}/help` | ToS link target (`rel: terms-of-service`) |
+| `rdap.custom_notices` | *(none)* | List of `{title, description, url, rel}` registrar-specific notices appended to responses |
 | `auth.enabled` | `false` | Enable JWT authentication |
 | `metrics.enabled` | `true` | Enable the Prometheus metrics endpoint |
 | `rate_limiting.enabled` | `true` | Enable per-IP rate limiting |

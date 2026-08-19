@@ -53,6 +53,23 @@ rdap:
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.1"
   version: "1.1.0"
+  # Customize the Terms of Service notice (card + link) shown in responses.
+  # When omitted, a generic notice pointing at /help is used. Set the URL to your
+  # actual terms page, like a registrar's registration agreement.
+  tos:
+    title: "Terms of Service"
+    description:
+      - "Registration data for example.com is provided by Example Registrar, Inc."
+      - "Use is subject to the terms of service at https://rdap.example.com/help"
+    url: "https://rdap.example.com/help"
+  # Optional registrar/registry-specific notices appended to every response.
+  # The ICANN-mandated notices (Status Codes, RDDS Inaccuracy) are always included.
+  custom_notices:
+    - title: "Data Policy"
+      description:
+        - "Contact data is published per the ICANN Registration Data Policy."
+      url: "https://rdap.example.com/privacy"
+      rel: "privacy-policy"
 
 auth:
   enabled: false
