@@ -35,7 +35,15 @@ func New(st store.Interface, cfg config.RDAPConfig) *Service {
 // The output must remain byte-compatible with what passes the ICANN
 // conformance tool (2024 profile).
 func (s *Service) DomainToRDAP(d *domain.Domain, requestURL string) rdap.Domain {
-	return domainToRDAP(d, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions())
+	return domainToRDAP(d, nil, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions())
+}
+
+// DomainAggregateToRDAP maps a consistent domain aggregate (domain + resolved
+// registrar/contacts/nameservers) to the RDAP domain object. Rendering from an
+// aggregate guarantees the embedded registrar/contact data and the domain's
+// status/events all reflect the same snapshot.
+func (s *Service) DomainAggregateToRDAP(agg *domain.DomainAggregate, requestURL string) rdap.Domain {
+	return domainToRDAP(agg.Domain, agg, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions())
 }
 
 // EntityToRDAP maps a canonical contact to the RDAP entity object.
@@ -53,13 +61,15 @@ func (s *Service) IPNetworkToRDAP(n *domain.IPNetwork, requestURL string) rdap.I
 	return ipNetworkToRDAP(n, s.cfg.BaseURL)
 }
 
-// LookupDomain returns the RDAP domain object for a domain name.
+// LookupDomain returns the RDAP domain object for a domain name, read from a
+// single consistent snapshot so the response cannot observe a partially-applied
+// update across the domain and its embedded registrar/contacts/nameservers.
 func (s *Service) LookupDomain(name string, requestURL string) (rdap.Domain, error) {
-	d, err := s.store.LookupDomain(name)
+	agg, err := s.store.GetDomainAggregate(name)
 	if err != nil {
 		return rdap.Domain{}, err
 	}
-	return s.DomainToRDAP(d, requestURL), nil
+	return s.DomainAggregateToRDAP(agg, requestURL), nil
 }
 
 // LookupEntity returns the RDAP entity object for a contact handle.
@@ -208,7 +218,7 @@ func statusValues(status []domain.Status) []string {
 
 // domainToRDAP reproduces the exact RDAP domain object previously produced by
 // the handlers. It mirrors the ICANN-validated serializer.
-func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode string, opts *rdap.NoticeOptions) rdap.Domain {
+func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, requestURL, registrarBaseURL, mode string, opts *rdap.NoticeOptions) rdap.Domain {
 	nameservers := make([]rdap.Nameserver, len(d.Nameservers))
 	for i, ns := range d.Nameservers {
 		nameservers[i] = rdap.Nameserver{
@@ -255,6 +265,10 @@ func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode 
 		events = append(events, rdap.Event{EventAction: "registrar expiration", EventDate: rdap.FormatTime(d.ExpiresAt)})
 	}
 
+	// The registrar entity is built from the resolved registrar contact in the
+	// aggregate (so a real registrar's own vcard is used), falling back to a
+	// static example when none is available (e.g. plain domain searches). Both
+	// paths emit the same about link to the IANA-registered registrar base URL.
 	registrarEntity := rdap.Entity{
 		Common: rdap.Common{
 			ObjectClassName: "entity",
@@ -268,17 +282,22 @@ func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode 
 			}},
 		},
 		Roles: []string{"registrar"},
-		VCardArray: []interface{}{
+		PublicIDs: []rdap.PublicID{
+			{Type: "IANA Registrar ID", Identifier: d.Registrar},
+		},
+	}
+
+	if agg != nil && agg.Registrar != nil && agg.Registrar.VCard != nil {
+		registrarEntity.VCardArray = vcardToJCard(agg.Registrar.VCard)
+	} else {
+		registrarEntity.VCardArray = []interface{}{
 			"vcard",
 			[]interface{}{
 				[]interface{}{"version", map[string]interface{}{}, "text", "4.0"},
 				[]interface{}{"fn", map[string]interface{}{}, "text", "Example Registrar Inc."},
 				[]interface{}{"adr", map[string]interface{}{"cc": "US"}, "text", []interface{}{"", "", "123 Maple Ave", "Los Angeles", "CA", "90210", ""}},
 			},
-		},
-		PublicIDs: []rdap.PublicID{
-			{Type: "IANA Registrar ID", Identifier: d.Registrar},
-		},
+		}
 	}
 
 	// Abuse entity inside registrar entity with tel and email.
@@ -302,6 +321,8 @@ func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode 
 	registrarEntity.Common.Entities = append(registrarEntity.Common.Entities, abuseEntity)
 
 	// Registrant entity required by the 2024 gTLD Response Profile (section 2.7.2).
+	// Built from the resolved registrant contact when available; falls back to a
+	// static example for plain domain searches.
 	registrantEntity := rdap.Entity{
 		Common: rdap.Common{
 			ObjectClassName: "entity",
@@ -320,6 +341,16 @@ func domainToRDAP(d *domain.Domain, baseURL, requestURL, registrarBaseURL, mode 
 				[]interface{}{"email", map[string]interface{}{}, "text", "registrant@example.com"},
 			},
 		},
+	}
+
+	if agg != nil {
+		regHandles := d.Contacts[domain.RoleRegistrant]
+		if len(regHandles) > 0 {
+			registrantEntity.Common.Handle = regHandles[0]
+			if c, ok := agg.Contacts[regHandles[0]]; ok && c.VCard != nil {
+				registrantEntity.VCardArray = vcardToJCard(c.VCard)
+			}
+		}
 	}
 
 	domainEntities := []rdap.Entity{registrarEntity}
@@ -454,4 +485,47 @@ func roleStrings(roles []domain.ContactRole) []string {
 		out = append(out, string(r))
 	}
 	return out
+}
+
+// vcardToJCard converts a structured domain.VCard into the jCard array format
+// emitted over RDAP. The shape matches the ICANN-validated output:
+// ["vcard", [ [name, params, type, value], ... ]]. Addresses use the 7-element
+// adr form and telephone types are emitted as ["voice"] / ["fax"].
+func vcardToJCard(v *domain.VCard) []interface{} {
+	props := []interface{}{
+		[]interface{}{"version", map[string]interface{}{}, "text", "4.0"},
+	}
+	if v.FullName != "" {
+		props = append(props, []interface{}{"fn", map[string]interface{}{}, "text", v.FullName})
+	}
+	if v.Kind != "" {
+		props = append(props, []interface{}{"kind", map[string]interface{}{}, "text", v.Kind})
+	}
+	if v.Organization != "" {
+		props = append(props, []interface{}{"org", map[string]interface{}{}, "text", v.Organization})
+	}
+	if v.Address != nil {
+		cc := v.Address.CountryCode
+		params := map[string]interface{}{}
+		if cc != "" {
+			params["cc"] = cc
+		}
+		props = append(props, []interface{}{"adr", params, "text", []interface{}{
+			v.Address.POBox, v.Address.Extended, v.Address.Street,
+			v.Address.Locality, v.Address.Region, v.Address.PostalCode, v.Address.CountryName,
+		}})
+	}
+	if v.VoiceTel != "" {
+		props = append(props, []interface{}{"tel", map[string]interface{}{"type": []interface{}{"voice"}}, "uri", v.VoiceTel})
+	}
+	if v.FaxTel != "" {
+		props = append(props, []interface{}{"tel", map[string]interface{}{"type": []interface{}{"fax"}}, "uri", v.FaxTel})
+	}
+	if v.Email != "" {
+		props = append(props, []interface{}{"email", map[string]interface{}{}, "text", v.Email})
+	}
+	if v.ContactURI != "" {
+		props = append(props, []interface{}{"contact-uri", map[string]interface{}{}, "uri", v.ContactURI})
+	}
+	return []interface{}{"vcard", props}
 }

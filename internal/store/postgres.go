@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tespio/go-rdap-server/internal/config"
 	"github.com/tespio/go-rdap-server/internal/domain"
@@ -101,6 +102,87 @@ func (s *PostgresStore) LookupDomain(name string) (*domain.Domain, error) {
 	}
 
 	return &record, nil
+}
+
+// GetDomainAggregate resolves a domain plus its registrar, contacts, and
+// nameservers within a single REPEATABLE READ transaction. All related objects
+// are read from the same snapshot, so a concurrent update (e.g. a registrar
+// transfer, nameserver change, or renewal) can never produce a torn response.
+func (s *PostgresStore) GetDomainAggregate(name string) (*domain.DomainAggregate, error) {
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		return nil, fmt.Errorf("set isolation level: %w", err)
+	}
+
+	// Domain row.
+	row := tx.QueryRow(ctx, `
+		SELECT handle, ldh_name, unicode_name, tld, status,
+		       created_at, updated_at, expires_at,
+		       registrant, admin, tech, billing,
+		       nameservers, secure_dns
+		FROM domains WHERE ldh_name = $1 OR unicode_name = $1
+	`, name)
+	d, err := scanDomainRow(row)
+	if err != nil {
+		return nil, fmt.Errorf("domain lookup: %w", err)
+	}
+
+	agg := &domain.DomainAggregate{
+		Domain:      d,
+		Contacts:    map[string]*domain.Contact{},
+		Nameservers: map[string]*domain.NameServer{},
+	}
+
+	// Resolve the sponsoring registrar and all role contacts.
+	handles := make(map[string]bool)
+	if d.Registrar != "" {
+		handles[d.Registrar] = true
+	}
+	for _, hs := range d.Contacts {
+		for _, h := range hs {
+			handles[h] = true
+		}
+	}
+	for h := range handles {
+		contact, err := s.lookupContactTx(ctx, tx, h)
+		if err == nil {
+			agg.Contacts[h] = contact
+			if h == d.Registrar {
+				agg.Registrar = contact
+			}
+		}
+	}
+
+	// Resolve nameservers attached to the domain.
+	for _, ns := range d.Nameservers {
+		nsRow := tx.QueryRow(ctx, `
+			SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
+			FROM nameservers WHERE handle = $1
+		`, ns.Handle)
+		if n, err := scanNameserverRow(nsRow); err == nil {
+			agg.Nameservers[n.Handle] = n
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return agg, nil
+}
+
+func (s *PostgresStore) lookupContactTx(ctx context.Context, tx pgx.Tx, handle string) (*domain.Contact, error) {
+	row := tx.QueryRow(ctx, `
+		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
+		FROM entities WHERE handle = $1
+	`, handle)
+	return scanContactRow(row)
 }
 
 func (s *PostgresStore) LookupContact(handle string) (*domain.Contact, error) {

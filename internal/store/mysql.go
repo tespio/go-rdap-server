@@ -162,6 +162,80 @@ func (s *MySQLStore) LookupDomain(name string) (*domain.Domain, error) {
 	return &record, nil
 }
 
+// GetDomainAggregate resolves a domain plus its registrar, contacts, and
+// nameservers within a single REPEATABLE READ transaction. All related objects
+// are read from the same snapshot, so a concurrent update (e.g. a registrar
+// transfer, nameserver change, or renewal) can never produce a torn response.
+func (s *MySQLStore) GetDomainAggregate(name string) (*domain.DomainAggregate, error) {
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	row := tx.QueryRowContext(ctx, `
+		SELECT handle, ldh_name, unicode_name, tld, status,
+		       created_at, updated_at, expires_at,
+		       registrant, admin, tech, billing,
+		       nameservers, secure_dns
+		FROM domains WHERE ldh_name = ? OR unicode_name = ?
+	`, name, name)
+	d, err := scanMySQLDomainRow(row)
+	if err != nil {
+		return nil, fmt.Errorf("domain lookup: %w", err)
+	}
+
+	agg := &domain.DomainAggregate{
+		Domain:      d,
+		Contacts:    map[string]*domain.Contact{},
+		Nameservers: map[string]*domain.NameServer{},
+	}
+
+	handles := make(map[string]bool)
+	if d.Registrar != "" {
+		handles[d.Registrar] = true
+	}
+	for _, hs := range d.Contacts {
+		for _, h := range hs {
+			handles[h] = true
+		}
+	}
+	for h := range handles {
+		contact, err := s.lookupContactTx(ctx, tx, h)
+		if err == nil {
+			agg.Contacts[h] = contact
+			if h == d.Registrar {
+				agg.Registrar = contact
+			}
+		}
+	}
+
+	for _, ns := range d.Nameservers {
+		nsRow := tx.QueryRowContext(ctx, `
+			SELECT handle, ldh_name, unicode_name, ipv4, ipv6, status, created_at, updated_at
+			FROM nameservers WHERE handle = ?
+		`, ns.Handle)
+		if n, err := scanMySQLNameserverRow(nsRow); err == nil {
+			agg.Nameservers[n.Handle] = n
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return agg, nil
+}
+
+func (s *MySQLStore) lookupContactTx(ctx context.Context, tx *sql.Tx, handle string) (*domain.Contact, error) {
+	row := tx.QueryRowContext(ctx, `
+		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids
+		FROM entities WHERE handle = ?
+	`, handle)
+	return scanMySQLContactRow(row)
+}
+
 func (s *MySQLStore) LookupContact(handle string) (*domain.Contact, error) {
 	query := `
 		SELECT handle, vcard_json, roles, status, created_at, updated_at, public_ids

@@ -14,6 +14,12 @@ import (
 // with its own model.
 type Interface interface {
 	LookupDomain(name string) (*domain.Domain, error)
+	// GetDomainAggregate returns a domain with its registrar, contacts, and
+	// nameservers resolved from a single consistent snapshot. It is the
+	// recommended entry point for rendering a domain RDAP response, because it
+	// guarantees the response cannot observe a partially-applied update (e.g. a
+	// registrar transfer) across the different object reads.
+	GetDomainAggregate(name string) (*domain.DomainAggregate, error)
 	LookupContact(handle string) (*domain.Contact, error)
 	LookupNameserver(name string) (*domain.NameServer, error)
 	LookupIPNetwork(cidr string) (*domain.IPNetwork, error)

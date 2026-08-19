@@ -255,6 +255,49 @@ func (s *MemoryStore) LookupDomain(name string) (*domain.Domain, error) {
 	return record, nil
 }
 
+// GetDomainAggregate resolves a domain plus its registrar, contacts, and
+// nameservers while holding a single read lock, so the returned aggregate is a
+// consistent snapshot. In the memory store all objects live in maps, so this is
+// purely a lock-scoping guarantee against any future concurrent writes.
+func (s *MemoryStore) GetDomainAggregate(name string) (*domain.DomainAggregate, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	name = strings.ToLower(strings.TrimSuffix(name, "."))
+	d, ok := s.domains[name]
+	if !ok {
+		return nil, fmt.Errorf("domain not found: %s", name)
+	}
+
+	agg := &domain.DomainAggregate{
+		Domain:      d,
+		Contacts:    map[string]*domain.Contact{},
+		Nameservers: map[string]*domain.NameServer{},
+	}
+
+	if reg, ok := s.contacts[d.Registrar]; ok {
+		agg.Registrar = reg
+		agg.Contacts[d.Registrar] = reg
+	}
+
+	for role, handles := range d.Contacts {
+		_ = role
+		for _, h := range handles {
+			if c, ok := s.contacts[h]; ok {
+				agg.Contacts[h] = c
+			}
+		}
+	}
+
+	for _, ns := range d.Nameservers {
+		if n, ok := s.nameservers[ns.Handle]; ok {
+			agg.Nameservers[ns.Handle] = n
+		}
+	}
+
+	return agg, nil
+}
+
 func (s *MemoryStore) LookupContact(handle string) (*domain.Contact, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

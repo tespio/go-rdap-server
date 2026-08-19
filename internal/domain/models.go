@@ -191,6 +191,23 @@ type Domain struct {
 	Metadata  Metadata  `json:"metadata"`
 }
 
+// DomainAggregate is a domain plus its resolved related objects, all read from a
+// single transactional snapshot. Rendering an RDAP response from one aggregate
+// guarantees internal consistency: the domain's status/events and its embedded
+// registrar, contacts, and nameservers all reflect the same moment in time, so a
+// concurrent transfer/renewal/delete can never produce a torn response (e.g. a
+// domain that says "transferred to Registrar B" but still carries Registrar A's
+// contact data).
+type DomainAggregate struct {
+	Domain *Domain
+	// Registrar is the resolved sponsoring registrar contact (if available).
+	Registrar *Contact
+	// Contacts maps contact handle -> resolved contact.
+	Contacts map[string]*Contact
+	// Nameservers maps nameserver handle -> resolved nameserver.
+	Nameservers map[string]*NameServer
+}
+
 // IPNetwork is a registry IP network (address block).
 type IPNetwork struct {
 	Handle       string    `json:"handle"`

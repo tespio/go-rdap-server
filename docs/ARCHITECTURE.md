@@ -154,6 +154,32 @@ rendered, you'd edit it in one place and all lookups + searches would reflect it
 > If you customize the mapping, re-run the conformance suite in `.rdapct/` to confirm
 > you haven't broken compliance.
 
+### Read consistency (transactions)
+
+An RDAP domain response composes data from multiple objects (the domain row, its
+sponsoring registrar, its contacts, its nameservers). If those were read with
+independent queries, a concurrent update could produce a **torn response** — e.g. a
+domain that says "transferred to Registrar B" while still carrying Registrar A's
+contact/abuse data. That violates the spec, which requires the registrar entity to
+be internally coherent.
+
+To prevent this, the server reads domain responses through a **single transactional
+aggregate**:
+
+- `store.GetDomainAggregate(name)` returns a `domain.DomainAggregate` — the domain
+  plus its resolved registrar, contacts, and nameservers — read from **one snapshot**.
+- The memory store holds a single read lock across the whole resolution.
+- Postgres uses `BEGIN ... ISOLATION LEVEL REPEATABLE READ`; MySQL uses
+  `REPEATABLE READ` (read-only) — a consistent snapshot is sufficient for read-only
+  composition; serializable is not required.
+- `service.LookupDomain` renders the RDAP response from that aggregate, so status,
+  events, and the embedded registrar/contacts/nameservers all reflect the same
+  moment in time.
+
+> If you add a new store or change how a domain response is composed, always resolve
+> all of its related objects inside the same transaction/snapshot, rather than with
+> separate `Lookup*` calls, or staleness can sneak back in.
+
 ---
 
 ## 6. Why this matters for integration
