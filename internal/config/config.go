@@ -138,7 +138,7 @@ func (c *Config) setDefaults() {
 		c.RDAP.RegistrarBaseURL = c.RDAP.BaseURL
 	}
 	if c.RDAP.Version == "" {
-		c.RDAP.Version = "1.1"
+		c.RDAP.Version = "1.2"
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090

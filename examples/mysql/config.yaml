@@ -1,4 +1,4 @@
-﻿# RDAP Server â€” MySQL example configuration.
+# RDAP Server — MySQL example configuration.
 # Load the schema + seed first:
 #   mysql -u rdap -p < examples/mysql/schema.sql
 #   mysql -u rdap -p < examples/mysql/seed.sql
@@ -44,7 +44,7 @@ rdap:
   max_search_limit: 100
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.1"
-  version: "1.1.0"
+  version: "1.2.0"
   # Customize the Terms of Service notice (card + link). Optional.
   tos:
     title: "Terms of Service"

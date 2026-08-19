@@ -52,7 +52,7 @@ rdap:
   max_search_limit: 100
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.1"
-  version: "1.1.0"
+  version: "1.2.0"
   # Customize the Terms of Service notice (card + link) shown in responses.
   # When omitted, a generic notice pointing at /help is used. Set the URL to your
   # actual terms page, like a registrar's registration agreement.

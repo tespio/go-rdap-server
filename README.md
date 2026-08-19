@@ -158,8 +158,8 @@ rdap:
   max_domain_length: 253
   max_search_limit: 100
   port43_whois: "whois.example.com"
-  server_name: "RDAP Server v1.1"
-  version: "1.1.0"
+  server_name: "RDAP Server v1.2"
+  version: "1.2.0"
   # Customize the Terms of Service notice (card + link) in responses.
   # Set the URL to your real terms page, like a registrar's agreement.
   tos:
@@ -213,7 +213,7 @@ rate_limiting:
 | `rdap.max_search_limit` | `100` | Max results for search endpoints |
 | `rdap.port43_whois` | *(unset)* | Whois server host for the `port43` member |
 | `rdap.server_name` | *(unset)* | Server display name |
-| `rdap.version` | `1.1` | Server version string |
+| `rdap.version` | `1.2` | Server version string |
 | `rdap.tos.title` | `Terms of Service` | Title of the Terms of Service notice card |
 | `rdap.tos.description` | *(generic)* | Body text of the ToS notice (company name, terms) |
 | `rdap.tos.url` | `{base_url}/help` | ToS link target (`rel: terms-of-service`) |
