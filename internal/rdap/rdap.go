@@ -226,6 +226,15 @@ type CustomNotice struct {
 	Rel         string
 }
 
+// RateLimitInfo documents the currently enforced per-IP rate limit on the /help
+// endpoint. If rate limiting is disabled, Enabled is false.
+type RateLimitInfo struct {
+	Enabled  bool
+	Requests int
+	Window   time.Duration
+	Burst    int
+}
+
 func NewNotices(baseURL string, opts *NoticeOptions) []Notice {
 	return []Notice{
 		buildToSNotice(baseURL, baseURL, opts),
@@ -332,9 +341,82 @@ func buildToSNotice(requestURL, baseURL string, opts *NoticeOptions) Notice {
 	}
 }
 
-func NewHelp(baseURL string, opts *NoticeOptions) Help {
+func NewHelp(baseURL string, opts *NoticeOptions, rate RateLimitInfo) Help {
 	return Help{
 		Conformance: NewConformance(),
-		Notices:     NewNotices(baseURL, opts),
+		Notices:     NewHelpNotices(baseURL, opts, rate),
 	}
+}
+
+// NewHelpNotices builds the notice set for the /help endpoint. Unlike domain and
+// entity responses, /help is a service-level page, so it uses a generic Terms of
+// Service notice rather than the (possibly registration-data-specific) custom
+// ToS description. Custom registrar notices are still appended, and the current
+// enforced rate limit is documented.
+func NewHelpNotices(baseURL string, opts *NoticeOptions, rate RateLimitInfo) []Notice {
+	rateDesc := "Access to this RDAP server is rate-limited. Excessive queries may be throttled."
+	if rate.Enabled {
+		perWindow := rate.Window
+		if perWindow <= 0 {
+			perWindow = time.Minute
+		}
+		rateDesc = fmt.Sprintf(
+			"Access to this RDAP server is rate-limited to %d requests per %s per IP address%s.",
+			rate.Requests, perWindow, burstSuffix(rate.Burst),
+		)
+	}
+
+	notices := []Notice{
+		{
+			Title:       "Terms of Service",
+			Description: []string{"Use of this RDAP server is subject to the registrar's terms of service."},
+			Links: []Link{{
+				Value: baseURL,
+				Rel:   "terms-of-service",
+				Href:  fmt.Sprintf("%s/help", baseURL),
+				Type:  "application/rdap+json",
+			}},
+		},
+		{
+			Title:       "Rate Limiting",
+			Description: []string{rateDesc},
+			Links: []Link{{
+				Value: baseURL,
+				Rel:   "rate-limit-policy",
+				Href:  fmt.Sprintf("%s/help", baseURL),
+				Type:  "application/rdap+json",
+			}},
+		},
+	}
+
+	if opts != nil {
+		for _, c := range opts.Custom {
+			if c.URL == "" {
+				c.URL = fmt.Sprintf("%s/help", baseURL)
+			}
+			rel := c.Rel
+			if rel == "" {
+				rel = "terms-of-service"
+			}
+			notices = append(notices, Notice{
+				Title:       c.Title,
+				Description: c.Description,
+				Links: []Link{{
+					Value: baseURL,
+					Rel:   rel,
+					Href:  c.URL,
+					Type:  "text/html",
+				}},
+			})
+		}
+	}
+
+	return notices
+}
+
+func burstSuffix(burst int) string {
+	if burst <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(", with a burst allowance of %d", burst)
 }

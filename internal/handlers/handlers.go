@@ -19,10 +19,11 @@ type Handler struct {
 	svc  *service.Service
 	cfg  config.RDAPConfig
 	port int
+	rate config.RateConfig
 }
 
-func New(svc *service.Service, cfg config.RDAPConfig, serverPort int) *Handler {
-	return &Handler{svc: svc, cfg: cfg, port: serverPort}
+func New(svc *service.Service, cfg config.RDAPConfig, rate config.RateConfig, serverPort int) *Handler {
+	return &Handler{svc: svc, cfg: cfg, port: serverPort, rate: rate}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -76,7 +77,16 @@ func (h *Handler) noticeOpts() *rdap.NoticeOptions {
 }
 
 func (h *Handler) Help(w http.ResponseWriter, r *http.Request) {
-	help := rdap.NewHelp(h.cfg.BaseURL, h.noticeOpts())
+	rateInfo := rdap.RateLimitInfo{}
+	if h.rate.Enabled {
+		rateInfo = rdap.RateLimitInfo{
+			Enabled:  true,
+			Requests: h.rate.Requests,
+			Window:   h.rate.Window,
+			Burst:    h.rate.Burst,
+		}
+	}
+	help := rdap.NewHelp(h.cfg.BaseURL, h.noticeOpts(), rateInfo)
 	writeJSON(w, http.StatusOK, help)
 }
 

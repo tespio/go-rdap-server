@@ -69,7 +69,7 @@ func New(cfg *config.Config, store store.Interface, logger *zap.Logger) *Server 
 
 	// Register handlers
 	svc := service.New(store, cfg.RDAP)
-	handler := handlers.New(svc, cfg.RDAP, cfg.Server.Port)
+	handler := handlers.New(svc, cfg.RDAP, cfg.Rate, cfg.Server.Port)
 	handler.RegisterRoutes(r)
 
 	// Health check
