@@ -73,6 +73,7 @@ service without the operational overhead.
 - [Testing & Coverage](#testing--coverage)
 - [Development](#development)
 - [License](#license)
+- [Changelog](CHANGELOG.md)
 
 ## Quick Start
 
