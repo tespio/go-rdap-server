@@ -42,13 +42,25 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/autnum/{asn}", h.LookupAutnum)
 	r.Head("/autnum/{asn}", h.LookupAutnum)
 
-	// Search endpoints
-	r.Get("/domains", h.SearchDomains)
-	r.Head("/domains", h.SearchDomains)
-	r.Get("/entities", h.SearchEntities)
-	r.Head("/entities", h.SearchEntities)
-	r.Get("/nameservers", h.SearchNameservers)
-	r.Head("/nameservers", h.SearchNameservers)
+	// Search endpoints (RFC 7482). Optional capability — most registrars/
+	// registries disable these in production (abuse/DoS risk). When disabled
+	// the routes still exist but return 501 Not Implemented (RFC 9082 §5.1),
+	// so clients get an explicit answer instead of a bare 404.
+	if h.cfg.SearchEnabled {
+		r.Get("/domains", h.SearchDomains)
+		r.Head("/domains", h.SearchDomains)
+		r.Get("/entities", h.SearchEntities)
+		r.Head("/entities", h.SearchEntities)
+		r.Get("/nameservers", h.SearchNameservers)
+		r.Head("/nameservers", h.SearchNameservers)
+	} else {
+		r.Get("/domains", h.SearchNotImplemented)
+		r.Head("/domains", h.SearchNotImplemented)
+		r.Get("/entities", h.SearchNotImplemented)
+		r.Head("/entities", h.SearchNotImplemented)
+		r.Get("/nameservers", h.SearchNotImplemented)
+		r.Head("/nameservers", h.SearchNotImplemented)
+	}
 }
 
 func (h *Handler) requestURL(r *http.Request) string {
@@ -222,6 +234,13 @@ func (h *Handler) LookupAutnum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// SearchNotImplemented responds 501 Not Implemented when search endpoints are
+// disabled via rdap.search_enabled: false (the default). RFC 9082 §5.1: a
+// server that does not implement searches must respond 501.
+func (h *Handler) SearchNotImplemented(w http.ResponseWriter, r *http.Request) {
+	writeError(w, http.StatusNotImplemented, 501, "Search not implemented", "Search queries are disabled on this server")
 }
 
 func (h *Handler) SearchDomains(w http.ResponseWriter, r *http.Request) {

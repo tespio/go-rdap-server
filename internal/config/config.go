@@ -46,6 +46,13 @@ type RDAPConfig struct {
 	Port43Whois      string   `yaml:"port43_whois"`
 	ServerName       string   `yaml:"server_name"`
 	Version          string   `yaml:"version"`
+	// SearchEnabled controls the RFC 7482 search endpoints
+	// (/domains?name=..., /entities?fn=..., /nameservers?name=...).
+	// Searches are an optional RDAP capability and most registrars/registries
+	// disable them in production due to abuse/DoS risk (a wildcard search can
+	// walk large portions of the database). When disabled (default), search
+	// routes return HTTP 501 Not Implemented per RFC 9082 §5.1.
+	SearchEnabled bool `yaml:"search_enabled"`
 	// ToS customizes the Terms of Service notice text and link. Optional; when
 	// unset a generic notice is used.
 	ToS *ToSConfig `yaml:"tos"`

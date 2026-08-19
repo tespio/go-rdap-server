@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`rdap.search_enabled` config flag** — controls the RFC 7482 search endpoints
+  (`/domains?name=*`, `/entities?fn=*`, `/nameservers?name=*`). **Disabled by default**:
+  wildcard searches are an abuse/DoS vector and most registrars/registries don't offer
+  them. When disabled, search routes return **HTTP 501 Not Implemented** (RFC 9082 §5.1).
+  Set `search_enabled: true` to enable searches.
+- **Search-flag tests** — unit tests cover both enabled (200 + results) and disabled
+  (501) behavior, including HEAD parity.
+
 ## [1.2.0] - 2026-08-19
 
 ### Added

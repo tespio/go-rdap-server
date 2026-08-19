@@ -50,6 +50,12 @@ rdap:
   registrar_base_url: "https://rdap.example.org/rdap/"
   max_domain_length: 253
   max_search_limit: 100
+  # RFC 7482 search endpoints (/domains?name=*, /entities?fn=*, /nameservers?name=*).
+  # DISABLED by default: wildcard searches are an abuse/DoS vector (they can walk
+  # large parts of the database) and most registrars/registries do not offer them.
+  # When disabled, search routes return HTTP 501 Not Implemented (RFC 9082 §5.1).
+  # Set to true only if you truly need to support searches.
+  search_enabled: false
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.1"
   version: "1.2.0"

@@ -84,6 +84,10 @@ jobs:
             # the about link to equal its IANA-registered RDAP base URL.
             registrar_base_url: "https://rdap.networksolutions.com/rdap/"
             max_search_limit: 100
+            # Keep searches enabled for the conformance run (they are optional in
+            # RDAP; default is disabled). The shipped configs ship with
+            # search_enabled: false.
+            search_enabled: true
             server_name: "RDAP Server (conformance)"
             version: "1.1.0"
           EOF

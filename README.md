@@ -159,6 +159,9 @@ rdap:
   registrar_base_url: "https://rdap.example.org/rdap/"  # example registrar RDAP base URL
   max_domain_length: 253
   max_search_limit: 100
+  # RFC 7482 search endpoints. DISABLED by default (abuse/DoS risk); when
+  # disabled they return HTTP 501 Not Implemented. Set true only if needed.
+  search_enabled: false
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.2"
   version: "1.2.0"
@@ -212,7 +215,8 @@ rate_limiting:
 | `rdap.base_url` | *(required)* | Public base URL; used for self links and notice hrefs |
 | `rdap.registrar_base_url` | `base_url` | RDAP base URL of the registrar (used for the `about`/`related` links). The shipped config uses the example URL `https://rdap.example.org/rdap/`; for ICANN conformance (`-47701`) set it to the base URL registered in the IANA registrar-ids dataset for the registrar IANA ID in your data (e.g. ID 2 → `https://rdap.networksolutions.com/rdap/`) |
 | `rdap.max_domain_length` | `253` | Max domain name length |
-| `rdap.max_search_limit` | `100` | Max results for search endpoints |
+| `rdap.max_search_limit` | `100` | Max results for search endpoints (only when `search_enabled: true`) |
+| `rdap.search_enabled` | `false` | Enable RFC 7482 search endpoints. **Disabled by default**: wildcard searches (`/domains?name=*`, `/entities?fn=*`, `/nameservers?name=*`) are an abuse/DoS vector and most registrars/registries don't offer them. When disabled, search routes return HTTP 501 Not Implemented (RFC 9082 §5.1) |
 | `rdap.port43_whois` | *(unset)* | Whois server host for the `port43` member |
 | `rdap.server_name` | *(unset)* | Server display name |
 | `rdap.version` | `1.2` | Server version string |
@@ -242,6 +246,12 @@ rate_limiting:
 
 ### Searches (RFC 7482)
 
+> **Disabled by default.** Searches are an optional RDAP capability and most
+> registrars/registries turn them off in production because wildcard searches
+> (`name=*`) can walk large parts of the database — an abuse/DoS vector.
+> Set `rdap.search_enabled: true` in `config.yaml` to enable them. When disabled,
+> every search route returns **HTTP 501 Not Implemented** (RFC 9082 §5.1).
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET`/`HEAD` | `/domains?name={pattern}` | Search domains by name (wildcards `*` allowed) |
@@ -264,7 +274,7 @@ curl "http://localhost:8443/nameserver/ns1.example.com"
 curl "http://localhost:8443/ip/8.8.8.0/24"
 curl "http://localhost:8443/autnum/15169"
 
-# Searches
+# Searches (only when rdap.search_enabled: true; otherwise HTTP 501)
 curl "http://localhost:8443/domains?name=example*"
 curl "http://localhost:8443/domains?nsLdhName=ns1.example.com"
 curl "http://localhost:8443/entities?fn=Example*"
