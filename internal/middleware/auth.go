@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rdap-server/rdap/internal/auth"
-	"github.com/rdap-server/rdap/internal/config"
+	"github.com/tespio/go-rdap-server/internal/auth"
+	"github.com/tespio/go-rdap-server/internal/config"
 )
 
 type AuthMiddleware struct {

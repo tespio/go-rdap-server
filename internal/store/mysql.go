@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/domain"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/domain"
 )
 
 // MySQLStore is a MySQL-backed implementation of the storage interface.

@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/domain"
-	"github.com/rdap-server/rdap/internal/rdap"
-	"github.com/rdap-server/rdap/internal/store"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/domain"
+	"github.com/tespio/go-rdap-server/internal/rdap"
+	"github.com/tespio/go-rdap-server/internal/store"
 )
 
 // Service is the query service that resolves domain objects and maps them to

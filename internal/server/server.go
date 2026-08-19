@@ -9,11 +9,11 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/handlers"
-	"github.com/rdap-server/rdap/internal/middleware"
-	"github.com/rdap-server/rdap/internal/service"
-	"github.com/rdap-server/rdap/internal/store"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/handlers"
+	"github.com/tespio/go-rdap-server/internal/middleware"
+	"github.com/tespio/go-rdap-server/internal/service"
+	"github.com/tespio/go-rdap-server/internal/store"
 	"go.uber.org/zap"
 )
 

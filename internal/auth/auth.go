@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rdap-server/rdap/internal/config"
+	"github.com/tespio/go-rdap-server/internal/config"
 )
 
 type Claims struct {

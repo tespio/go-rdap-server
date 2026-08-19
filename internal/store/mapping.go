@@ -3,7 +3,7 @@ package store
 import (
 	"encoding/json"
 
-	"github.com/rdap-server/rdap/internal/domain"
+	"github.com/tespio/go-rdap-server/internal/domain"
 )
 
 // nsJSON is the shape of the JSONB "nameservers" column stored on a domain row.

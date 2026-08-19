@@ -4,6 +4,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/ci.yml?branch=master&label=CI&logo=github)](https://github.com/tespio/go-rdap-server/actions)
 [![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/Coverage-6.7%25-critical?logo=codecov&logoColor=white)](#testing--coverage)
 [![RDAPCT: 2024 Registrar - 0 errors](https://img.shields.io/badge/RDAPCT-2024%20Registrar%20%E2%9C%94%200%20errors-brightgreen)](README.md#icann-conformance)
 [![RDAPCT: 2024 Registry - 0 errors*](https://img.shields.io/badge/RDAPCT-2024%20Registry%20%E2%9C%94%200%20errors*%20-blue)](README.md#icann-conformance)
 
@@ -68,6 +69,7 @@ service without the operational overhead.
 - [RFC 9537 Redaction (2024 Profile)](#rfc-9537-redaction-2024-profile)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
+- [Testing & Coverage](#testing--coverage)
 - [Development](#development)
 - [License](#license)
 
@@ -802,8 +804,36 @@ real usage scenarios:
 ├── docker-compose.yml     # Full stack (Postgres, MySQL, Prometheus, Grafana)
 ├── Makefile               # Build, test, lint, docker, migrate targets
 ├── prometheus.yml         # Metrics scrape config
-└── go.mod                 # Module: github.com/rdap-server/rdap
+└── go.mod                 # Module: github.com/tespio/go-rdap-server
 ```
+
+## Testing & Coverage
+
+Tests run in CI on every push/PR (see `.github/workflows/ci.yml`) and a
+`coverage.out` artifact is uploaded to each run for inspection.
+
+Current statement coverage (measured locally, `make test-cover`):
+
+| Package | Coverage |
+|---------|:---:|
+| `internal/middleware` | 23.3% |
+| `internal/store` | 6.2% |
+| all other packages | 0% |
+| **Total** | **6.7%** |
+
+> Coverage is currently **low** — the conformance-critical `internal/service` and
+> `internal/rdap` layers have no unit tests yet. The project is validated against
+> the ICANN conformance tool (see [ICANN Conformance](#icann-conformance)), which
+> exercises the full HTTP/RDAP output end-to-end, but statement-level unit tests
+> for those packages are an open improvement.
+
+```bash
+make test          # go test -v -race ./...
+make test-cover    # coverage report (coverage.html)
+```
+
+To report coverage to Codecov, enable Codecov for this repo and add the token as a
+`CODECOV_TOKEN` secret; the CI workflow can then upload `coverage.out`.
 
 ## Development
 

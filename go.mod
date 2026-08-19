@@ -1,4 +1,4 @@
-module github.com/rdap-server/rdap
+module github.com/tespio/go-rdap-server
 
 go 1.22
 

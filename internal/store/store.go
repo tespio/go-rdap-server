@@ -3,8 +3,8 @@ package store
 import (
 	"fmt"
 
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/domain"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/domain"
 )
 
 // Interface is the storage adapter boundary. It produces canonical registry

@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rdap-server/rdap/internal/config"
+	"github.com/tespio/go-rdap-server/internal/config"
 )
 
 var (

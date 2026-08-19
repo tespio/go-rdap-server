@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/domain"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/domain"
 )
 
 type PostgresStore struct {

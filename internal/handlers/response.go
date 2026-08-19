@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/rdap-server/rdap/internal/rdap"
+	"github.com/tespio/go-rdap-server/internal/rdap"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

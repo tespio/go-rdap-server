@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/metrics"
-	"github.com/rdap-server/rdap/internal/server"
-	"github.com/rdap-server/rdap/internal/store"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/metrics"
+	"github.com/tespio/go-rdap-server/internal/server"
+	"github.com/tespio/go-rdap-server/internal/store"
 	"go.uber.org/zap"
 )
 

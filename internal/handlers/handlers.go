@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rdap-server/rdap/internal/config"
-	"github.com/rdap-server/rdap/internal/rdap"
-	"github.com/rdap-server/rdap/internal/service"
+	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/rdap"
+	"github.com/tespio/go-rdap-server/internal/service"
 )
 
 type Handler struct {
