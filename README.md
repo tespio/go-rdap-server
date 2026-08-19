@@ -832,6 +832,17 @@ make test          # go test -v -race ./...
 make test-cover    # coverage report (coverage.html)
 ```
 
+**Postgres integration test (read-consistency):** a test in `internal/store`
+proves the `REPEATABLE READ` snapshot in `GetDomainAggregate` actually holds under a
+concurrent write (a writer commits a registrar transfer mid-read and the reader must
+still see the pre-write registrar). It is gated behind `RDAP_TEST_DSN` and skips
+when unset, so CI is unaffected. To run it against a local Postgres:
+
+```bash
+RDAP_TEST_DSN="postgres://rdap:rdap@localhost:5432/rdap?sslmode=disable" \
+  go test ./internal/store/ -run TestPostgresAggregateSnapshotIsCoherent -v
+```
+
 To report coverage to Codecov, enable Codecov for this repo and add the token as a
 `CODECOV_TOKEN` secret; the CI workflow can then upload `coverage.out`.
 
