@@ -36,12 +36,14 @@ func main() {
 	defer store.Close()
 
 	metricsSrv := metrics.NewServer(cfg.Metrics)
-	go func() {
-		logger.Info("metrics server starting", zap.String("addr", metricsSrv.Addr))
-		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("metrics server error", zap.Error(err))
-		}
-	}()
+	if metricsSrv != nil {
+		go func() {
+			logger.Info("metrics server starting", zap.String("addr", metricsSrv.Addr))
+			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("metrics server error", zap.Error(err))
+			}
+		}()
+	}
 
 	srv := server.New(cfg, store, logger)
 
