@@ -1,6 +1,6 @@
 # RDAP Server
 
-[![Go version](https://img.shields.io/badge/Go-1.22+-blue?logo=go&logoColor=white)](https://go.dev/dl)
+[![Go version](https://img.shields.io/badge/Go-1.25+-blue?logo=go&logoColor=white)](https://go.dev/dl)
 [![CI](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/ci.yml?branch=master&label=CI&logo=github)](https://github.com/tespio/go-rdap-server/actions)
 [![ICANN Conformance](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/conformance.yml?branch=master&label=ICANN%20RDAPCT%20CI&logo=github)](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml)
 [![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
@@ -78,7 +78,7 @@ service without the operational overhead.
 
 ## Quick Start
 
-Requirements: [Go 1.22+](https://go.dev/dl).
+Requirements: [Go 1.25+](https://go.dev/dl).
 
 ```bash
 # Build
