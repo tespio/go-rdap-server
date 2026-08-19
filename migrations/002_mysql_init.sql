@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS entities (
     status      JSON NOT NULL,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    public_ids  JSON NOT NULL,
+    public_ids  JSON NOT NULL DEFAULT (JSON_ARRAY()),
     -- Registry metadata
     version     BIGINT NOT NULL DEFAULT 1,
     updated_by  VARCHAR(255) NULL,
