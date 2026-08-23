@@ -18,7 +18,7 @@ rdap:
   max_search_limit: 100
   port43_whois: "whois.example.com"
   server_name: "RDAP Server (benchmark)"
-  version: "1.2.1"
+  version: "1.2.2"
 
 auth:
   enabled: false

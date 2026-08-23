@@ -47,8 +47,8 @@ rdap:
   # they return HTTP 501 Not Implemented (RFC 9082 §5.1).
   search_enabled: false
   port43_whois: "whois.example.com"
-  server_name: "RDAP Server v1.2.1"
-  version: "1.2.1"
+  server_name: "RDAP Server v1.2.2"
+  version: "1.2.2"
   # Customize the Terms of Service notice (card + link). Optional.
   tos:
     title: "Terms of Service"

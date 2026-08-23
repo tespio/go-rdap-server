@@ -89,7 +89,7 @@ jobs:
             # search_enabled: false.
             search_enabled: true
             server_name: "RDAP Server (conformance)"
-            version: "1.2.1"
+            version: "1.2.2"
           EOF
 
       - name: Start RDAP server (background)
