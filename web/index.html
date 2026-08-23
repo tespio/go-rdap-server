@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RDAP Lookup — whois, modern</title>
+<meta name="description" content="Client-side RDAP (Registration Data Access Protocol) lookup. Query domains, nameservers, entities, IP networks, and ASNs via the standard RDAP bootstrap.">
+<style>
+  :root {
+    --bg: #0f1420;
+    --bg-soft: #161d2e;
+    --panel: #1b2437;
+    --border: #2a3550;
+    --text: #e8ecf4;
+    --muted: #93a0b8;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79, 140, 255, .12);
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  header {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(79,140,255,.06), transparent);
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: .3px; }
+  h1 .accent { color: var(--accent); }
+  .tagline { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+
+  .search { display: flex; gap: 8px; flex-wrap: wrap; }
+  .search input[type=text] {
+    flex: 1 1 260px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search input[type=text]:focus { border-color: var(--accent); }
+  select, button {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.1); }
+  button.toggle.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+  .settings {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 14px; color: var(--muted); font-size: 13px;
+  }
+  .settings input[type=text] { width: 280px; }
+
+  main { padding: 22px 0 60px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  .muted { color: var(--muted); }
+
+  .obj-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .obj-kind {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+    padding: 2px 10px;
+  }
+  .obj-name { font-size: 20px; font-weight: 700; word-break: break-all; }
+  .obj-handle { color: var(--muted); font-family: var(--mono); font-size: 13px; }
+
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 14px; }
+  .badge {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  }
+  .badge.good { color: var(--good); border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
+  .badge.warn { color: var(--warn); border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.08); }
+
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; width: 180px; }
+  td { font-size: 14px; word-break: break-word; }
+  tr:last-child td { border-bottom: none; }
+
+  .section-title {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 22px 0 8px; font-weight: 600;
+  }
+
+  .vcard .fn { font-weight: 600; }
+  .vcard table td:last-child { white-space: pre-wrap; }
+
+  .kv { font-size: 14px; }
+  .kv .k { color: var(--muted); display: inline-block; min-width: 150px; }
+  .kv .v { font-family: var(--mono); }
+
+  .links a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .links a:hover { text-decoration: underline; }
+
+  pre.raw {
+    background: #0b0f18;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .error-box {
+    border: 1px solid rgba(248,113,113,.4);
+    background: rgba(248,113,113,.07);
+    color: #fecaca;
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .error-box .err-title { font-weight: 700; margin-bottom: 4px; }
+  .error-box ul { margin: 4px 0 0; padding-left: 20px; }
+
+  .empty {
+    color: var(--muted); text-align: center; padding: 40px 0; font-size: 14px;
+  }
+  .loading { color: var(--muted); padding: 20px 0; text-align: center; }
+  .spin {
+    display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 8px;
+    border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+    animation: rot .8s linear infinite;
+  }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  footer { color: var(--muted); font-size: 12px; padding: 18px 24px 40px; border-top: 1px solid var(--border); }
+  footer a { color: var(--accent); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>RDAP <span class="accent">Lookup</span></h1>
+    <p class="tagline">Registration Data Access Protocol (RDAP) — whois, modern. Pure client-side; queries the authoritative RDAP server via the IANA bootstrap.</p>
+
+    <form class="search" id="searchForm">
+      <input type="text" id="query" placeholder="e.g. example.com, ns1.example.com, entity 2, 8.8.8.0/24, AS15169" autocomplete="off" spellcheck="false" autofocus>
+      <select id="type" title="Object type (auto-detects domains, IPs, ASNs)">
+        <option value="auto">Auto</option>
+        <option value="domain">Domain</option>
+        <option value="nameserver">Nameserver</option>
+        <option value="entity">Entity</option>
+        <option value="ip">IP network</option>
+        <option value="autnum">Autnum</option>
+      </select>
+      <button type="submit" class="primary">Lookup</button>
+      <button type="button" id="bootstrapToggle" class="toggle active" title="Resolve the authoritative RDAP server via the IANA bootstrap (uses the configured server when off)">🌐 Bootstrap</button>
+    </form>
+
+    <div class="settings">
+      <span>RDAP server:</span>
+      <input type="text" id="server" placeholder="https://rdap.example.com" title="Fallback/override RDAP base URL used when Bootstrap is off (or bootstrap resolution fails)">
+      <label><input type="checkbox" id="rawToggle"> Raw JSON</label>
+    </div>
+    <div class="note">Bootstrap ON: queries the IANA-registered server for the queried TLD/network/ASN (per RFC 7484). Bootstrap OFF: queries the server above (default <span id="defaultServer">http://localhost:8443</span>).</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="results"><div class="empty">Enter a domain, nameserver, entity handle, IP/CIDR, or ASN to look it up.</div></div>
+</main>
+
+<footer class="wrap">
+  <p>Built on <a href="https://datatracker.ietf.org/doc/html/rfc9082" target="_blank" rel="noopener">RFC 9082/9083 (STD 95)</a> and <a href="https://datatracker.ietf.org/doc/html/rfc7484" target="_blank" rel="noopener">RFC 7484</a> (bootstrap). Icon-free, dependency-free, no data leaves your browser except the RDAP queries themselves.</p>
+</footer>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+
+const BOOTSTRAP_URLS = {
+  domain:    "https://data.iana.org/rdap/dns.json",
+  ip:        "https://data.iana.org/rdap/ipv4.json",
+  autnum:    "https://data.iana.org/rdap/asn.json",
+};
+// RFC 7484 §5 (entities) bootstrap is rarely populated; we use the fallback server.
+const DEFAULT_SERVER = "http://localhost:8443";
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+function joinURL(base, path) {
+  return String(base).replace(/\/+$/, "") + "/" + path;
+}
+
+// ---------------------------------------------------------------------------
+// type detection
+// ---------------------------------------------------------------------------
+const RE_IPV4 = /^(\d{1,3})(\.\d{1,3}){3}(\/\d{1,2})?$/;
+const RE_IPV6 = /^[0-9a-f:]+(:\d{1,3})?(\/\d{1,3})?$/i;
+const RE_ASN = /^(?:AS)?(\d{1,10})$/i;
+
+function detectType(q) {
+  const s = q.trim();
+  if (/^AS\d{1,10}$/i.test(s) || /^\d{1,10}$/.test(s)) return "autnum";
+  if (RE_IPV4.test(s)) return "ip";
+  if (RE_IPV6.test(s)) return "ip";
+  if (/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.[a-zA-Z]{2,63}$/.test(s) && !/^(ns\d*\.)/i.test(s)) return "domain";
+  if (/^ns/i.test(s) && s.includes(".")) return "nameserver";
+  if (/^[a-zA-Z0-9_\-]{1,80}$/.test(s)) return "entity";
+  return "domain";
+}
+
+// ---------------------------------------------------------------------------
+// IANA bootstrap
+// ---------------------------------------------------------------------------
+async function fetchJSON(url) {
+  const r = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error("HTTP " + r.status + " fetching " + url);
+  return r.json();
+}
+
+function tldOf(domain) {
+  const parts = domain.trim().replace(/\.$/, "").toLowerCase().split(".");
+  return parts.length >= 2 ? parts[parts.length - 1] : domain.trim().toLowerCase();
+}
+
+function ipVersion(ip) { return ip.includes(":") ? 6 : 4; }
+
+async function resolveBootstrap(q, type) {
+  // Returns { base } — the authoritative RDAP base URL, or null.
+  const s = q.trim();
+  if (type === "domain") {
+    const tld = tldOf(s);
+    if (!tld) return null;
+    const data = await fetchJSON(BOOTSTRAP_URLS.domain);
+    for (const [tlds, urls] of data.services) {
+      if (tlds.includes(tld) && urls.length) return { base: urls[0] };
+    }
+    return null;
+  }
+  if (type === "ip") {
+    const [addr] = s.split("/");
+    const family = ipVersion(addr) === 6 ? 6 : 4;
+    const data = await fetchJSON(family === 6 ? "https://data.iana.org/rdap/ipv6.json" : BOOTSTRAP_URLS.ip);
+    for (const [ranges, urls] of data.services) {
+      for (const range of ranges) {
+        if (addrInRange(addr, range)) return { base: urls[0] };
+      }
+    }
+    return null;
+  }
+  if (type === "autnum") {
+    const asn = parseInt(s.replace(/^AS/i, ""), 10);
+    if (isNaN(asn)) return null;
+    const data = await fetchJSON(BOOTSTRAP_URLS.autnum);
+    for (const [ranges, urls] of data.services) {
+      for (const r of ranges) {
+        // Ranges come as "START-END" strings (e.g. "36864-37887").
+        const [start, end] = String(r).split("-").map(x => parseInt(x, 10));
+        if (asn >= start && asn <= (end ?? start)) return { base: urls[0] };
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+function addrInRange(addr, range) {
+  const [net, bitsRaw] = String(range).split("/");
+  const total = net.includes(":") ? 128 : 32;
+  const bits = bitsRaw ? parseInt(bitsRaw, 10) : total;
+  const a = bigint(addr);
+  const n = bigint(net);
+  const hostMask = (1n << BigInt(total - bits)) - 1n; // keep network bits, zero host bits
+  return (a & ~hostMask) === (n & ~hostMask);
+}
+
+function bigint(ip) {
+  const v = ip.includes(":") ? ipv6ToBigInt(ip) : ipv4ToBigInt(ip);
+  return v;
+}
+
+function ipv4ToBigInt(ip) {
+  return ip.split(".").reduce((acc, oct) => (acc << 8n) | BigInt(parseInt(oct, 10)), 0n);
+}
+
+function ipv6ToBigInt(ip) {
+  // Expand ::, then parse 8 hextets.
+  let s = ip;
+  if (s.includes("::")) {
+    const parts = s.split("::");
+    const left = parts[0] ? parts[0].split(":") : [];
+    const right = parts[1] ? parts[1].split(":") : [];
+    const fill = 8 - left.length - right.length;
+    s = left.concat(new Array(fill).fill("0"), right).join(":");
+  }
+  const hextets = s.split(":");
+  let acc = 0n;
+  for (const h of hextets) acc = (acc << 16n) | BigInt(parseInt(h || "0", 16));
+  return acc;
+}
+
+// ---------------------------------------------------------------------------
+// query building
+// ---------------------------------------------------------------------------
+async function lookup(query, type, useBootstrap) {
+  const q = query.trim();
+  const resolvedType = type === "auto" ? detectType(q) : type;
+  let base = $("server").value.trim() || DEFAULT_SERVER;
+
+  let sourceNote = null;
+  if (useBootstrap && BOOTSTRAP_URLS[resolvedType]) {
+    try {
+      const bs = await resolveBootstrap(q, resolvedType);
+      if (bs) {
+        base = bs.base;
+        sourceNote = "Resolved via IANA bootstrap → " + base;
+      }
+    } catch (e) {
+      sourceNote = "Bootstrap resolution failed (" + e.message + "); using fallback server.";
+    }
+  }
+
+  const path = resolvedType === "domain" ? "domain/" + encodeURIComponent(q)
+    : resolvedType === "nameserver" ? "nameserver/" + encodeURIComponent(q)
+    : resolvedType === "entity" ? "entity/" + encodeURIComponent(q)
+    : resolvedType === "ip" ? "ip/" + q
+    : "autnum/" + q.replace(/^AS/i, "");
+
+  const url = joinURL(base, path);
+  const r = await fetch(url, {
+    headers: { Accept: "application/rdap+json, application/json" },
+  });
+
+  let body;
+  try { body = await r.json(); } catch { throw new Error("Non-JSON response from " + url + " (HTTP " + r.status + ")"); }
+
+  if (!r.ok && !body.errorCode) {
+    throw new Error("HTTP " + r.status + " from " + url);
+  }
+  return { body, url, sourceNote };
+}
+
+// ---------------------------------------------------------------------------
+// rendering
+// ---------------------------------------------------------------------------
+function render(obj) {
+  const kind = obj.objectClassName || "object";
+  const el = document.createElement("div");
+
+  // Header
+  const head = document.createElement("div");
+  head.className = "obj-head";
+  const kindSpan = document.createElement("span");
+  kindSpan.className = "obj-kind";
+  kindSpan.textContent = kind;
+  head.appendChild(kindSpan);
+
+  const name = obj.ldhName || obj.unicodeName || obj.name || obj.handle || "Lookup result";
+  const nameEl = document.createElement("span");
+  nameEl.className = "obj-name";
+  nameEl.textContent = name;
+  head.appendChild(nameEl);
+
+  if (obj.handle) {
+    const h = document.createElement("span");
+    h.className = "obj-handle";
+    h.textContent = "handle: " + obj.handle;
+    head.appendChild(h);
+  }
+  el.appendChild(head);
+
+  // Status badges
+  if (Array.isArray(obj.status) && obj.status.length) {
+    const badges = document.createElement("div");
+    badges.className = "badges";
+    for (const st of obj.status) {
+      const b = document.createElement("span");
+      b.className = "badge good";
+      b.textContent = st;
+      badges.appendChild(b);
+    }
+    el.appendChild(badges);
+  }
+
+  // Role-specific key data
+  if (obj.objectClassName === "domain") renderDomain(el, obj);
+  else if (obj.objectClassName === "nameserver") renderNameserver(el, obj);
+  else if (obj.objectClassName === "ip network") renderIPNetwork(el, obj);
+  else if (obj.objectClassName === "autnum") renderAutnum(el, obj);
+  else if (obj.objectClassName === "entity") renderEntity(el, obj);
+
+  // Events
+  if (Array.isArray(obj.events) && obj.events.length) {
+    el.appendChild(sectionTitle("Events"));
+    el.appendChild(eventsTable(obj.events));
+  }
+
+  // Links
+  if (Array.isArray(obj.links) && obj.links.length) {
+    el.appendChild(sectionTitle("Links"));
+    const list = document.createElement("div");
+    list.className = "links";
+    for (const l of obj.links) {
+      const a = document.createElement("a");
+      a.href = l.href;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = (l.rel ? l.rel + " — " : "") + l.href;
+      list.appendChild(a);
+      list.appendChild(document.createElement("br"));
+    }
+    el.appendChild(list);
+  }
+
+  return el;
+}
+
+function sectionTitle(t) {
+  const d = document.createElement("div");
+  d.className = "section-title";
+  d.textContent = t;
+  return d;
+}
+
+function kvTable(rows) {
+  const t = document.createElement("table");
+  for (const [k, v] of rows) {
+    if (v === undefined || v === null || v === "") continue;
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = k;
+    const td = document.createElement("td");
+    td.textContent = Array.isArray(v) ? v.join(", ") : v;
+    tr.appendChild(th); tr.appendChild(td);
+    t.appendChild(tr);
+  }
+  return t;
+}
+
+function eventsTable(events) {
+  const t = document.createElement("table");
+  for (const ev of events) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = ev.eventAction || "event";
+    const td = document.createElement("td");
+    td.textContent = ev.eventDate || "";
+    tr.appendChild(th); tr.appendChild(td);
+    t.appendChild(tr);
+  }
+  return t;
+}
+
+function renderDomain(el, d) {
+  const rows = [["unicodeName", d.unicodeName], ["TLD", d.tld]];
+  if (d.secureDNS) {
+    rows.push(["DNSSEC", d.secureDNS.zoneSigned ? "zone signed" : "zone unsigned"]);
+    if (d.secureDNS.delegationSigned) rows.push(["DNSSEC delegation", "signed"]);
+  }
+  el.appendChild(kvTable(rows));
+
+  // Nameservers
+  if (Array.isArray(d.nameservers) && d.nameservers.length) {
+    el.appendChild(sectionTitle("Nameservers"));
+    const t = document.createElement("table");
+    for (const ns of d.nameservers) {
+      const tr = document.createElement("tr");
+      const th = document.createElement("th");
+      th.textContent = ns.ldhName || ns.handle;
+      const td = document.createElement("td");
+      const addrs = [];
+      if (ns.ipAddresses && ns.ipAddresses.v4) addrs.push(...ns.ipAddresses.v4.map(a => a + " (v4)"));
+      if (ns.ipAddresses && ns.ipAddresses.v6) addrs.push(...ns.ipAddresses.v6.map(a => a + " (v6)"));
+      td.textContent = addrs.join(", ") || (ns.status || []).join(", ");
+      tr.appendChild(th); tr.appendChild(td);
+      t.appendChild(tr);
+    }
+    el.appendChild(t);
+  }
+
+  // Entities (registrar / registrant / contacts)
+  if (Array.isArray(d.entities) && d.entities.length) {
+    el.appendChild(sectionTitle("Entities"));
+    for (const ent of d.entities) renderEntityCard(el, ent);
+  }
+}
+
+function renderEntityCard(el, ent) {
+  const card = document.createElement("div");
+  card.className = "panel";
+
+  const head = document.createElement("div");
+  head.className = "obj-head";
+  const kind = document.createElement("span");
+  kind.className = "obj-kind";
+  kind.textContent = (ent.roles || ["entity"]).join(" / ");
+  head.appendChild(kind);
+  if (ent.handle) {
+    const h = document.createElement("span");
+    h.className = "obj-handle";
+    h.textContent = ent.handle;
+    head.appendChild(h);
+  }
+  card.appendChild(head);
+
+  // vCard
+  if (Array.isArray(ent.vcardArray) && ent.vcardArray[0] === "vcard") {
+    card.appendChild(renderVCard(ent.vcardArray[1]));
+  }
+
+  // Public IDs
+  if (Array.isArray(ent.publicIds) && ent.publicIds.length) {
+    card.appendChild(sectionTitle("Public IDs"));
+    card.appendChild(kvTable(ent.publicIds.map(p => [p.type, p.identifier])));
+  }
+
+  // Nested entities (e.g. abuse under registrar)
+  if (Array.isArray(ent.entities) && ent.entities.length) {
+    for (const sub of ent.entities) renderEntityCard(card, sub);
+  }
+
+  el.appendChild(card);
+}
+
+function renderVCard(props) {
+  const wrap = document.createElement("div");
+  wrap.className = "vcard";
+  if (!Array.isArray(props)) { wrap.textContent = ""; return wrap; }
+  const t = document.createElement("table");
+  for (const prop of props) {
+    if (!Array.isArray(prop) || prop.length < 3) continue;
+    const [name, , , value] = prop;
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = name === "fn" ? "Name" : name;
+    const td = document.createElement("td");
+    if (Array.isArray(value)) td.textContent = value.join(", ");
+    else td.textContent = value;
+    tr.appendChild(th); tr.appendChild(td);
+    t.appendChild(tr);
+  }
+  wrap.appendChild(t);
+  return wrap;
+}
+
+function renderNameserver(el, ns) {
+  const rows = [["unicodeName", ns.unicodeName]];
+  el.appendChild(kvTable(rows));
+  if (ns.ipAddresses) {
+    el.appendChild(sectionTitle("IP addresses"));
+    const t = document.createElement("table");
+    for (const [family, addrs] of Object.entries(ns.ipAddresses)) {
+      for (const a of addrs) {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.textContent = family === "v4" ? "IPv4" : "IPv6";
+        const td = document.createElement("td");
+        td.textContent = a;
+        tr.appendChild(th); tr.appendChild(td);
+        t.appendChild(tr);
+      }
+    }
+    el.appendChild(t);
+  }
+}
+
+function renderIPNetwork(el, n) {
+  el.appendChild(kvTable([
+    ["Network", n.startAddress + " — " + n.endAddress],
+    ["CIDR", Array.isArray(n.cidr) ? n.cidr.join(", ") : n.cidr],
+    ["IP version", n.ipVersion],
+    ["Name", n.name],
+    ["Type", n.type],
+    ["Country", n.country],
+  ]));
+}
+
+function renderAutnum(el, a) {
+  el.appendChild(kvTable([
+    ["Range", (a.startAutnum ?? "") + " — " + (a.endAutnum ?? "")],
+    ["Name", a.name],
+  ]));
+}
+
+function renderEntity(el, e) {
+  // Top-level entity lookup; vcard may be present or nested.
+  if (Array.isArray(e.vcardArray) && e.vcardArray[0] === "vcard") {
+    el.appendChild(renderVCard(e.vcardArray[1]));
+  }
+  if (Array.isArray(e.roles) && e.roles.length) {
+    el.appendChild(kvTable([["Roles", e.roles.join(", ")]]));
+  }
+  if (Array.isArray(e.publicIds) && e.publicIds.length) {
+    el.appendChild(sectionTitle("Public IDs"));
+    el.appendChild(kvTable(e.publicIds.map(p => [p.type, p.identifier])));
+  }
+  if (Array.isArray(e.entities) && e.entities.length) {
+    el.appendChild(sectionTitle("Entities"));
+    for (const sub of e.entities) renderEntityCard(el, sub);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// main flow
+// ---------------------------------------------------------------------------
+$("defaultServer").textContent = DEFAULT_SERVER;
+
+function showError(title, messages) {
+  const box = document.createElement("div");
+  box.className = "error-box";
+  const t = document.createElement("div");
+  t.className = "err-title";
+  t.textContent = title;
+  box.appendChild(t);
+  const ul = document.createElement("ul");
+  for (const m of messages) {
+    const li = document.createElement("li");
+    li.textContent = m;
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  $("results").replaceChildren(box);
+}
+
+function showLoading() {
+  const d = document.createElement("div");
+  d.className = "loading";
+  const s = document.createElement("span");
+  s.className = "spin";
+  d.appendChild(s);
+  d.appendChild(document.createTextNode("Looking up…"));
+  $("results").replaceChildren(d);
+}
+
+async function run() {
+  const q = $("query").value.trim();
+  if (!q) return;
+  const type = $("type").value;
+  const useBootstrap = $("bootstrapToggle").classList.contains("active");
+  const showRaw = $("rawToggle").checked;
+
+  showLoading();
+  try {
+    const { body, url, sourceNote } = await lookup(q, type, useBootstrap);
+    const panel = document.createElement("div");
+    panel.className = "panel";
+
+    if (sourceNote) {
+      const note = document.createElement("div");
+      note.className = "note";
+      note.textContent = sourceNote;
+      panel.appendChild(note);
+    }
+
+    const u = document.createElement("div");
+    u.className = "note";
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = url;
+    u.appendChild(document.createTextNode("Endpoint: "));
+    u.appendChild(a);
+    panel.appendChild(u);
+
+    if (body.errorCode) {
+      showError("RDAP error " + body.errorCode + (body.title ? " — " + body.title : ""), body.description || []);
+      return;
+    }
+
+    if (showRaw) {
+      const pre = document.createElement("pre");
+      pre.className = "raw";
+      pre.textContent = JSON.stringify(body, null, 2);
+      panel.appendChild(pre);
+    } else {
+      panel.appendChild(render(body));
+    }
+    $("results").replaceChildren(panel);
+  } catch (err) {
+    showError("Lookup failed", [err.message || String(err)]);
+  }
+}
+
+$("searchForm").addEventListener("submit", (e) => { e.preventDefault(); run(); });
+$("bootstrapToggle").addEventListener("click", () => {
+  $("bootstrapToggle").classList.toggle("active");
+});
+$("query").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") run();
+});
+
+// Load server override from localStorage if present.
+try {
+  const saved = localStorage.getItem("rdap-server");
+  if (saved) $("server").value = saved;
+} catch (e) {}
+$("server").addEventListener("change", () => {
+  try { localStorage.setItem("rdap-server", $("server").value); } catch (e) {}
+});
+</script>
+</body>
+</html>

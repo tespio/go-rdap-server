@@ -65,6 +65,7 @@ service without the operational overhead.
 - [Example Responses](#example-responses)
 - [Storage](#storage)
 - [Examples](#examples)
+- [Web UI (client-side RDAP lookup)](#web-ui-client-side-rdap-lookup)
 - [ICANN Conformance](#icann-conformance)
 - [Production Deployment](#production-deployment)
 - [RFC 9537 Redaction (2024 Profile)](#rfc-9537-redaction-2024-profile)
@@ -484,6 +485,30 @@ Because MySQL has no native CIDR/inet type, IP networks are stored as numeric ra
 `VARBINARY(16)`); the server computes the queried range and matches numerically.
 
 Implementation: `internal/store/mysql.go` (uses `database/sql` + `go-sql-driver/mysql`).
+
+## Web UI (client-side RDAP lookup)
+
+A dependency-free, single-file browser client lives at
+[`web/index.html`](web/index.html) — a modern "whois" page for RDAP:
+
+- **Lookups** for domains, nameservers, entities, IP networks (v4 + v6), and ASNs,
+  with automatic type detection.
+- **IANA bootstrap resolution** (RFC 7484): with *Bootstrap* on, it auto-finds the
+  authoritative RDAP server for the queried TLD / network / ASN. With it off, it
+  queries your own server directly.
+- **Clean rendering** of statuses, events, jCard contact data, nameservers,
+  DNSSEC, and links — plus a raw-JSON view.
+
+It is pure HTML/CSS/JS (no frameworks, no build step, no tracking) and works
+against this server out of the box because CORS is enabled by default:
+
+```bash
+# Serve the page locally, then open http://localhost:8000
+python3 -m http.server 8000 --directory web
+```
+
+The page defaults to `http://localhost:8443`; change the server field in the
+page (it remembers your choice) or drop the file behind any static host.
 
 ## Examples
 
