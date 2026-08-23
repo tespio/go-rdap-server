@@ -70,6 +70,16 @@ type IPNetwork struct {
 	Type         string   `json:"type,omitempty"`
 	Country      string   `json:"country,omitempty"`
 	ParentHandle string   `json:"parentHandle,omitempty"`
+	// CIDR0CIDRs is emitted when the cidr0 extension is enabled (NRO RDAP CIDR).
+	CIDR0CIDRs []CIDR0 `json:"cidr0_cidrs,omitempty"`
+}
+
+// CIDR0 is one entry of the cidr0 extension: a single CIDR notation expressed
+// as a prefix address and length (NRO RDAP CIDR).
+type CIDR0 struct {
+	V4Prefix string `json:"v4prefix,omitempty"`
+	V6Prefix string `json:"v6prefix,omitempty"`
+	Length   int    `json:"length"`
 }
 
 type Domain struct {
@@ -83,6 +93,8 @@ type Domain struct {
 	Network     *IPNetwork   `json:"network,omitempty"`
 	Notices     []Notice     `json:"notices,omitempty"`
 	PublicIDs   []PublicID   `json:"publicIds,omitempty"`
+	// TTL0Data is emitted when the ttl0 extension is enabled (draft-ietf-regext-rdap-ttl-extension).
+	TTL0Data *TTL0Data `json:"ttl0_data,omitempty"`
 }
 
 type Nameserver struct {
@@ -90,6 +102,15 @@ type Nameserver struct {
 	LDHName     string     `json:"ldhName,omitempty"`
 	UnicodeName string     `json:"unicodeName,omitempty"`
 	IPAddresses *IPAddrSet `json:"ipAddresses,omitempty"`
+	// TTL0Data is emitted when the ttl0 extension is enabled.
+	TTL0Data *TTL0Data `json:"ttl0_data,omitempty"`
+}
+
+// TTL0Data is the ttl0 extension payload mapping DNS record type mnemonics to
+// TTL values, with optional remarks (draft-ietf-regext-rdap-ttl-extension-11).
+type TTL0Data struct {
+	Values  map[string]int `json:"values"`
+	Remarks []Remark       `json:"remarks,omitempty"`
 }
 
 type Variant struct {
@@ -138,23 +159,50 @@ type DomainSearchResult struct {
 	Conformance
 	DomainSearchResults []Domain `json:"domainSearchResults,omitempty"`
 	Notices             []Notice `json:"notices,omitempty"`
+	// ReverseSearchPropertiesMapping is present on reverse search responses
+	// (RFC 9536 §5).
+	ReverseSearchPropertiesMapping []ReverseSearchPropertiesMapping `json:"reverse_search_properties_mapping,omitempty"`
 }
 
 type EntitySearchResult struct {
 	Conformance
 	EntitySearchResults []Entity `json:"entitySearchResults,omitempty"`
 	Notices             []Notice `json:"notices,omitempty"`
+	// ReverseSearchPropertiesMapping is present on reverse search responses
+	// (RFC 9536 §5).
+	ReverseSearchPropertiesMapping []ReverseSearchPropertiesMapping `json:"reverse_search_properties_mapping,omitempty"`
 }
 
 type NameserverSearchResult struct {
 	Conformance
 	NameserverSearchResults []Nameserver `json:"nameserverSearchResults,omitempty"`
 	Notices                 []Notice     `json:"notices,omitempty"`
+	// ReverseSearchPropertiesMapping is present on reverse search responses
+	// (RFC 9536 §5).
+	ReverseSearchPropertiesMapping []ReverseSearchPropertiesMapping `json:"reverse_search_properties_mapping,omitempty"`
 }
 
 type Help struct {
 	Conformance
 	Notices []Notice `json:"notices,omitempty"`
+	// ReverseSearchProperties advertises the reverse searches the server
+	// supports (RFC 9536). Emitted when the reverse_search extension is enabled.
+	ReverseSearchProperties []ReverseSearchProperty `json:"reverse_search_properties,omitempty"`
+}
+
+// ReverseSearchProperty describes one supported reverse search (RFC 9536 §4).
+type ReverseSearchProperty struct {
+	SearchableResourceType string `json:"searchableResourceType"`
+	RelatedResourceType    string `json:"relatedResourceType"`
+	Property               string `json:"property"`
+}
+
+// ReverseSearchPropertiesMapping is included at the top of a reverse search
+// response to detail the JSONPath mapping applied for each query property
+// (RFC 9536 §5).
+type ReverseSearchPropertiesMapping struct {
+	Property     string `json:"property"`
+	PropertyPath string `json:"propertyPath"`
 }
 
 // Top-level response wrappers for objects that can be embedded.

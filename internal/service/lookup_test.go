@@ -207,6 +207,9 @@ func (failStore) SearchNameserversByName(pattern string, limit int) ([]domain.Na
 func (failStore) SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error) {
 	return nil, errors.New("fail")
 }
+func (failStore) ReverseSearchDomainsByEntity(property, pattern string, limit int) ([]domain.Domain, error) {
+	return nil, errors.New("fail")
+}
 func (failStore) Ping() error  { return nil }
 func (failStore) Close() error { return nil }
 

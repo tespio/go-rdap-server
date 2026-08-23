@@ -515,6 +515,12 @@ func (s *MySQLStore) Ping() error {
 	return s.db.PingContext(context.Background())
 }
 
+// ReverseSearchDomainsByEntity is not supported by the MySQL store (no
+// reverse-search index is maintained); per RFC 9536 §7 the handler returns 501.
+func (s *MySQLStore) ReverseSearchDomainsByEntity(property, pattern string, limit int) ([]domain.Domain, error) {
+	return nil, ErrReverseSearchUnsupported
+}
+
 func (s *MySQLStore) Close() error {
 	return s.db.Close()
 }

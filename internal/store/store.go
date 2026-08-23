@@ -1,11 +1,17 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/tespio/go-rdap-server/internal/config"
 	"github.com/tespio/go-rdap-server/internal/domain"
 )
+
+// ErrReverseSearchUnsupported is returned by stores that cannot serve RFC 9536
+// reverse searches (e.g. relational stores without the needed index). The
+// handler maps it to HTTP 501 Not Implemented, as the RFC requires.
+var ErrReverseSearchUnsupported = errors.New("reverse search not supported by this storage backend")
 
 // Interface is the storage adapter boundary. It produces canonical registry
 // objects (internal/domain) rather than RDAP wire records. The RDAP wire format
@@ -30,6 +36,11 @@ type Interface interface {
 	SearchContactsByHandle(pattern string, limit int) ([]domain.Contact, error)
 	SearchNameserversByName(pattern string, limit int) ([]domain.NameServer, error)
 	SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error)
+	// ReverseSearchDomainsByEntity returns the domains that have an associated
+	// entity matching the given RFC 9536 reverse search property+pattern.
+	// property is one of "role", "handle", "fn", "email". Stores that cannot
+	// serve reverse searches return ErrReverseSearchUnsupported.
+	ReverseSearchDomainsByEntity(property, pattern string, limit int) ([]domain.Domain, error)
 	Ping() error
 	Close() error
 }

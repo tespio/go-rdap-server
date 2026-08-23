@@ -608,6 +608,12 @@ func (s *PostgresStore) Ping() error {
 	return s.pool.Ping(context.Background())
 }
 
+// ReverseSearchDomainsByEntity is not supported by the PostgreSQL store (no
+// reverse-search index is maintained); per RFC 9536 §7 the handler returns 501.
+func (s *PostgresStore) ReverseSearchDomainsByEntity(property, pattern string, limit int) ([]domain.Domain, error) {
+	return nil, ErrReverseSearchUnsupported
+}
+
 func (s *PostgresStore) Close() error {
 	s.pool.Close()
 	return nil

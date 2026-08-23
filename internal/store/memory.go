@@ -466,6 +466,76 @@ func (s *MemoryStore) SearchNameserversByIP(ip string, limit int) ([]domain.Name
 	return results, nil
 }
 
+// ReverseSearchDomainsByEntity returns the domains that have an associated
+// entity matching the RFC 9536 property+pattern. Supported properties:
+//   - "role":   a domain entity whose roles include the pattern
+//   - "handle": a domain entity whose handle matches the glob pattern
+//   - "fn":     a domain entity whose vCard fn (full name) matches the glob
+//   - "email":  a domain entity whose vCard email matches the glob
+//
+// Patterns support the RDAP wildcards '*' (any run) and '?' (single char).
+func (s *MemoryStore) ReverseSearchDomainsByEntity(property, pattern string, limit int) ([]domain.Domain, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	re, err := compileGlob(strings.ToLower(pattern))
+	if err != nil {
+		return nil, fmt.Errorf("invalid pattern: %w", err)
+	}
+
+	var results []domain.Domain
+	for _, d := range s.domains {
+		if domainMatchesEntity(s, d, property, re) {
+			results = append(results, *d)
+			if limit > 0 && len(results) >= limit {
+				break
+			}
+		}
+	}
+	return results, nil
+}
+
+// domainMatchesEntity reports whether any entity associated with domain d
+// matches the reverse-search property under the compiled pattern.
+func domainMatchesEntity(s *MemoryStore, d *domain.Domain, property string, re *regexp.Regexp) bool {
+	handles := make(map[string]bool)
+	if d.Registrar != "" {
+		handles[d.Registrar] = true
+	}
+	for _, hs := range d.Contacts {
+		for _, h := range hs {
+			handles[h] = true
+		}
+	}
+	for handle := range handles {
+		c, ok := s.contacts[handle]
+		if !ok {
+			continue
+		}
+		switch property {
+		case "role":
+			for _, r := range c.Roles {
+				if re.MatchString(strings.ToLower(string(r))) {
+					return true
+				}
+			}
+		case "handle":
+			if re.MatchString(strings.ToLower(handle)) {
+				return true
+			}
+		case "fn":
+			if c.VCard != nil && re.MatchString(strings.ToLower(c.VCard.FullName)) {
+				return true
+			}
+		case "email":
+			if c.VCard != nil && re.MatchString(strings.ToLower(c.VCard.Email)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *MemoryStore) Ping() error {
 	return nil
 }

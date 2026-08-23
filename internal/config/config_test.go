@@ -165,3 +165,66 @@ func TestMetricsAddr(t *testing.T) {
 		t.Errorf("MetricsAddr = %q", got)
 	}
 }
+
+func TestExtensionsParsed(t *testing.T) {
+	p := writeConfig(t, `
+rdap:
+  base_url: "https://rdap.example.com"
+  extensions: ["ttl0", "geofeed1", "cidr0", "reverse_search"]
+  ttl0:
+    domain:
+      NS: 3600
+      DS: 300
+    nameserver:
+      A: 86400
+    remarks:
+      - title: "TTL policy"
+        description: ["Provisional values."]
+  geofeed:
+    url: "https://geofeed.example.com/feed.csv"
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.RDAP.ExtensionsEnabled("ttl0") || !cfg.RDAP.ExtensionsEnabled("geofeed1") ||
+		!cfg.RDAP.ExtensionsEnabled("cidr0") || !cfg.RDAP.ExtensionsEnabled("reverse_search") {
+		t.Errorf("extensions = %v", cfg.RDAP.Extensions)
+	}
+	if cfg.RDAP.TTL0 == nil || cfg.RDAP.TTL0.Domain["NS"] != 3600 || cfg.RDAP.TTL0.Nameserver["A"] != 86400 {
+		t.Errorf("ttl0 = %+v", cfg.RDAP.TTL0)
+	}
+	if len(cfg.RDAP.TTL0.Remarks) != 1 || cfg.RDAP.TTL0.Remarks[0].Title != "TTL policy" {
+		t.Errorf("ttl0 remarks = %+v", cfg.RDAP.TTL0.Remarks)
+	}
+	if cfg.RDAP.Geofeed == nil || cfg.RDAP.Geofeed.URL != "https://geofeed.example.com/feed.csv" {
+		t.Errorf("geofeed = %+v", cfg.RDAP.Geofeed)
+	}
+}
+
+func TestExtensionsInvalidRejected(t *testing.T) {
+	p := writeConfig(t, `
+rdap:
+  base_url: "https://rdap.example.com"
+  extensions: ["ttl0", "bogus_ext"]
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected error for unknown extension identifier")
+	}
+}
+
+func TestExtensionsOffByDefault(t *testing.T) {
+	p := writeConfig(t, `rdap:
+  base_url: "https://rdap.example.com"
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.RDAP.Extensions) != 0 {
+		t.Errorf("extensions should default to empty, got %v", cfg.RDAP.Extensions)
+	}
+	if cfg.RDAP.ExtensionsEnabled("ttl0") {
+		t.Error("ttl0 should be disabled by default")
+	}
+}

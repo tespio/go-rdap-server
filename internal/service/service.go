@@ -11,6 +11,7 @@ package service
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/tespio/go-rdap-server/internal/config"
@@ -24,18 +25,19 @@ import (
 type Service struct {
 	store store.Interface
 	cfg   config.RDAPConfig
+	ext   *extensions
 }
 
 // New builds a query service backed by the given store.
 func New(st store.Interface, cfg config.RDAPConfig) *Service {
-	return &Service{store: st, cfg: cfg}
+	return &Service{store: st, cfg: cfg, ext: extensionsFromConfig(cfg)}
 }
 
 // DomainToRDAP maps a canonical domain aggregate to the RDAP domain object.
 // The output must remain byte-compatible with what passes the ICANN
 // conformance tool (2024 profile).
 func (s *Service) DomainToRDAP(d *domain.Domain, requestURL string) rdap.Domain {
-	return domainToRDAP(d, nil, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions())
+	return domainToRDAP(d, nil, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions(), s.ext)
 }
 
 // DomainAggregateToRDAP maps a consistent domain aggregate (domain + resolved
@@ -43,7 +45,7 @@ func (s *Service) DomainToRDAP(d *domain.Domain, requestURL string) rdap.Domain 
 // aggregate guarantees the embedded registrar/contact data and the domain's
 // status/events all reflect the same snapshot.
 func (s *Service) DomainAggregateToRDAP(agg *domain.DomainAggregate, requestURL string) rdap.Domain {
-	return domainToRDAP(agg.Domain, agg, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions())
+	return domainToRDAP(agg.Domain, agg, s.cfg.BaseURL, requestURL, s.cfg.RegistrarBaseURL, s.cfg.Mode, s.NoticeOptions(), s.ext)
 }
 
 // EntityToRDAP maps a canonical contact to the RDAP entity object.
@@ -53,12 +55,12 @@ func (s *Service) EntityToRDAP(c *domain.Contact, requestURL string) rdap.Entity
 
 // NameserverToRDAP maps a canonical nameserver to the RDAP nameserver object.
 func (s *Service) NameserverToRDAP(ns *domain.NameServer, requestURL string) rdap.Nameserver {
-	return nameserverToRDAP(ns, s.cfg.BaseURL)
+	return nameserverToRDAP(ns, s.cfg.BaseURL, s.ext)
 }
 
 // IPNetworkToRDAP maps a canonical IP network to the RDAP ip network object.
 func (s *Service) IPNetworkToRDAP(n *domain.IPNetwork, requestURL string) rdap.IPNetwork {
-	return ipNetworkToRDAP(n, s.cfg.BaseURL)
+	return ipNetworkToRDAP(n, s.cfg.BaseURL, s.ext)
 }
 
 // LookupDomain returns the RDAP domain object for a domain name, read from a
@@ -177,6 +179,59 @@ func (s *Service) SearchNameserversByIP(ip string, limit int, requestURL string)
 	return out, nil
 }
 
+// ReverseSearchDomainsByEntity performs an RFC 9536 reverse search: find the
+// domains related to an entity matching property+pattern (role/handle/fn/email).
+// If the storage backend cannot serve reverse searches it returns
+// store.ErrReverseSearchUnsupported, which the handler maps to 501.
+func (s *Service) ReverseSearchDomainsByEntity(property, pattern string, limit int, requestURL string) ([]rdap.Domain, error) {
+	if !s.ext.reverseSearch {
+		return nil, store.ErrReverseSearchUnsupported
+	}
+	domains, err := s.store.ReverseSearchDomainsByEntity(property, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]rdap.Domain, 0, len(domains))
+	for i := range domains {
+		out = append(out, s.DomainToRDAP(&domains[i], requestURL))
+	}
+	return out, nil
+}
+
+// ReverseSearchProperties returns the reverse searches the server advertises in
+// its help response (RFC 9536 §4). Empty unless the reverse_search extension is
+// enabled and the storage backend supports reverse search.
+func (s *Service) ReverseSearchProperties() []rdap.ReverseSearchProperty {
+	if !s.ext.reverseSearch {
+		return nil
+	}
+	return []rdap.ReverseSearchProperty{
+		{SearchableResourceType: "domains", RelatedResourceType: "entity", Property: "handle"},
+		{SearchableResourceType: "domains", RelatedResourceType: "entity", Property: "role"},
+		{SearchableResourceType: "domains", RelatedResourceType: "entity", Property: "fn"},
+		{SearchableResourceType: "domains", RelatedResourceType: "entity", Property: "email"},
+	}
+}
+
+// ReverseSearchMapping returns the JSONPath mappings for the properties used in
+// a reverse search query, included at the top of a reverse search response
+// (RFC 9536 §5).
+func ReverseSearchMapping(properties []string) []rdap.ReverseSearchPropertiesMapping {
+	paths := map[string]string{
+		"handle": "$.entities[*].handle",
+		"role":   "$.entities[*].roles",
+		"fn":     "$.entities[*].vcardArray[1][?(@[0]=='fn')][3]",
+		"email":  "$.entities[*].vcardArray[1][?(@[0]=='email')][3]",
+	}
+	out := make([]rdap.ReverseSearchPropertiesMapping, 0, len(properties))
+	for _, p := range properties {
+		if path, ok := paths[p]; ok {
+			out = append(out, rdap.ReverseSearchPropertiesMapping{Property: p, PropertyPath: path})
+		}
+	}
+	return out
+}
+
 // BaseURL returns the configured RDAP base URL.
 func (s *Service) BaseURL() string {
 	return s.cfg.BaseURL
@@ -218,7 +273,7 @@ func statusValues(status []domain.Status) []string {
 
 // domainToRDAP reproduces the exact RDAP domain object previously produced by
 // the handlers. It mirrors the ICANN-validated serializer.
-func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, requestURL, registrarBaseURL, mode string, opts *rdap.NoticeOptions) rdap.Domain {
+func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, requestURL, registrarBaseURL, mode string, opts *rdap.NoticeOptions, ext *extensions) rdap.Domain {
 	nameservers := make([]rdap.Nameserver, len(d.Nameservers))
 	for i, ns := range d.Nameservers {
 		nameservers[i] = rdap.Nameserver{
@@ -239,6 +294,9 @@ func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, reques
 				V4: ns.IPV4,
 				V6: ns.IPV6,
 			},
+		}
+		if ext != nil && ext.ttl0 {
+			nameservers[i].TTL0Data = ttl0Data(ext.ttl0NS, ext.ttl0Remarks)
 		}
 	}
 
@@ -395,6 +453,10 @@ func domainToRDAP(d *domain.Domain, agg *domain.DomainAggregate, baseURL, reques
 		SecureDNS:   secureDNS,
 	}
 	out.Conformance = rdap.NewConformance2024()
+	if ext != nil && ext.ttl0 {
+		out.TTL0Data = ttl0Data(ext.ttl0Domain, ext.ttl0Remarks)
+		out.Conformance = rdap.WithExtensions(out.Conformance, "ttl0")
+	}
 	out.Notices = rdap.NewNoticesWithICANN(requestURL, baseURL, opts)
 
 	return out
@@ -430,8 +492,33 @@ func publicIDsToRDAP(ids []domain.PublicID) []rdap.PublicID {
 	return out
 }
 
-func nameserverToRDAP(ns *domain.NameServer, baseURL string) rdap.Nameserver {
-	return rdap.Nameserver{
+// ttl0Data builds the ttl0 extension payload for a domain or nameserver object.
+// values maps DNS record-type mnemonics to TTL seconds. A nil/empty values map
+// yields nil (nothing emitted), since the extension data must not be empty.
+func ttl0Data(values map[string]int, remarks []rdap.Remark) *rdap.TTL0Data {
+	if len(values) == 0 {
+		return nil
+	}
+	return &rdap.TTL0Data{Values: values, Remarks: remarks}
+}
+
+// cidr0FromCIDR converts a CIDR string ("8.8.8.0/24") into the cidr0 extension
+// entry form. Only valid single CIDRs produce an entry; anything unparseable is
+// skipped so a malformed stored value never corrupts the response.
+func cidr0FromCIDR(cidr string) (rdap.CIDR0, bool) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return rdap.CIDR0{}, false
+	}
+	ones, _ := ipnet.Mask.Size()
+	if ip.To4() != nil {
+		return rdap.CIDR0{V4Prefix: ip.To4().String(), Length: ones}, true
+	}
+	return rdap.CIDR0{V6Prefix: ip.String(), Length: ones}, true
+}
+
+func nameserverToRDAP(ns *domain.NameServer, baseURL string, ext *extensions) rdap.Nameserver {
+	out := rdap.Nameserver{
 		Common: rdap.Common{
 			ObjectClassName: "nameserver",
 			Handle:          ns.Handle,
@@ -454,14 +541,18 @@ func nameserverToRDAP(ns *domain.NameServer, baseURL string) rdap.Nameserver {
 			V6: ns.IPV6,
 		},
 	}
+	if ext != nil && ext.ttl0 {
+		out.TTL0Data = ttl0Data(ext.ttl0NS, ext.ttl0Remarks)
+	}
+	return out
 }
 
-func ipNetworkToRDAP(n *domain.IPNetwork, baseURL string) rdap.IPNetwork {
+func ipNetworkToRDAP(n *domain.IPNetwork, baseURL string, ext *extensions) rdap.IPNetwork {
 	cidr := ""
 	if len(n.CIDR) > 0 {
 		cidr = n.CIDR[0]
 	}
-	return rdap.IPNetwork{
+	out := rdap.IPNetwork{
 		Common: rdap.Common{
 			ObjectClassName: "ip network",
 			Handle:          n.Handle,
@@ -486,6 +577,29 @@ func ipNetworkToRDAP(n *domain.IPNetwork, baseURL string) rdap.IPNetwork {
 		Country:      n.Country,
 		ParentHandle: "",
 	}
+
+	if ext != nil {
+		// geofeed1 (RFC 9877): attach a rel=geofeed link to the IP network
+		// object so clients can fetch the geolocation feed for this network.
+		if ext.geofeed1 && ext.geofeedURL != "" {
+			out.Common.Links = append(out.Common.Links, rdap.Link{
+				Value: fmt.Sprintf("%s/ip/%s", baseURL, cidr),
+				Rel:   "geofeed",
+				Href:  ext.geofeedURL,
+				Type:  "application/geofeed+csv",
+			})
+		}
+		// cidr0 (NRO): express each stored CIDR as {v4prefix|v6prefix, length}.
+		if ext.cidr0 {
+			for _, c := range n.CIDR {
+				if entry, ok := cidr0FromCIDR(c); ok {
+					out.CIDR0CIDRs = append(out.CIDR0CIDRs, entry)
+				}
+			}
+		}
+	}
+
+	return out
 }
 
 func roleStrings(roles []domain.ContactRole) []string {

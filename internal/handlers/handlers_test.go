@@ -444,3 +444,108 @@ func TestHelpHandlerRateLimited(t *testing.T) {
 		t.Error("expected rate-limit notice documenting the limit in /help")
 	}
 }
+
+func TestReverseSearchHandler(t *testing.T) {
+	cfg := config.RDAPConfig{
+		BaseURL:          "https://rdap.example.com",
+		RegistrarBaseURL: "https://rdap.example.org/rdap/",
+		Mode:             "registrar",
+		MaxSearchLimit:   100,
+		SearchEnabled:    false,
+		Extensions:       []string{"reverse_search"},
+	}
+	router := newTestHandlerCfg(t, cfg)
+
+	// Reverse search by handle.
+	rec := doRequest(t, router, http.MethodGet, "/domains/reverse_search/entity?handle=REG1*")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp rdap.DomainSearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.DomainSearchResults) != 1 || resp.DomainSearchResults[0].LDHName != "example.com" {
+		t.Errorf("results = %+v", resp.DomainSearchResults)
+	}
+	if len(resp.ReverseSearchPropertiesMapping) != 1 ||
+		resp.ReverseSearchPropertiesMapping[0].Property != "handle" ||
+		resp.ReverseSearchPropertiesMapping[0].PropertyPath != "$.entities[*].handle" {
+		t.Errorf("mapping = %+v", resp.ReverseSearchPropertiesMapping)
+	}
+	hasRS := false
+	for _, c := range resp.Conformance.Conformance {
+		if c == "reverse_search" {
+			hasRS = true
+		}
+	}
+	if !hasRS {
+		t.Errorf("conformance missing reverse_search: %v", resp.Conformance.Conformance)
+	}
+
+	// Missing property -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/domains/reverse_search/entity")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing param expected 400, got %d", rec.Code)
+	}
+
+	// Multiple properties -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/domains/reverse_search/entity?handle=x&role=y")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("ambiguous expected 400, got %d", rec.Code)
+	}
+}
+
+func TestReverseSearchDisabledHandler(t *testing.T) {
+	router := newTestHandler(t, false)
+	rec := doRequest(t, router, http.MethodGet, "/domains/reverse_search/entity?handle=REG1*")
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("expected 501 when extension disabled, got %d", rec.Code)
+	}
+}
+
+func TestExtensionConformanceInLookups(t *testing.T) {
+	cfg := config.RDAPConfig{
+		BaseURL:          "https://rdap.example.com",
+		RegistrarBaseURL: "https://rdap.example.org/rdap/",
+		Mode:             "registrar",
+		MaxSearchLimit:   100,
+		Extensions:       []string{"ttl0", "geofeed1", "cidr0"},
+		TTL0:             &config.TTL0Config{Domain: map[string]int{"NS": 3600}, Nameserver: map[string]int{"A": 60}},
+		Geofeed:          &config.GeofeedConfig{URL: "https://geofeed.example.com/feed.csv"},
+	}
+	router := newTestHandlerCfg(t, cfg)
+
+	// IP network: geofeed1 + cidr0 conformance.
+	rec := doRequest(t, router, http.MethodGet, "/ip/8.8.8.0/24")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ip expected 200, got %d", rec.Code)
+	}
+	var n rdap.IPNetwork
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	hasConf := func(conf []string, want string) bool {
+		for _, c := range conf {
+			if c == want {
+				return true
+			}
+		}
+		return false
+	}
+	// Response wrapper embeds conformance in the IPNetworkResponse; unmarshal
+	// into a map to inspect rdapConformance at the top level.
+	var m map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("decode map: %v", err)
+	}
+	conf, _ := m["rdapConformance"].([]interface{})
+	var confStrs []string
+	for _, c := range conf {
+		confStrs = append(confStrs, c.(string))
+	}
+	if !hasConf(confStrs, "geofeed1") || !hasConf(confStrs, "cidr0") {
+		t.Errorf("ip conformance = %v", confStrs)
+	}
+	_ = n
+}

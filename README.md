@@ -62,6 +62,7 @@ service without the operational overhead.
 - [Operator Modes](#operator-modes)
 - [Configuration](#configuration)
 - [API Endpoints](#api-endpoints)
+- [RDAP Extensions](#rdap-extensions)
 - [Example Responses](#example-responses)
 - [Storage](#storage)
 - [Examples](#examples)
@@ -218,6 +219,9 @@ rate_limiting:
 | `rdap.max_domain_length` | `253` | Max domain name length |
 | `rdap.max_search_limit` | `100` | Max results for search endpoints (only when `search_enabled: true`) |
 | `rdap.search_enabled` | `false` | Enable RFC 7482 search endpoints. **Disabled by default**: wildcard searches (`/domains?name=*`, `/entities?fn=*`, `/nameservers?name=*`) are an abuse/DoS vector and most registrars/registries don't offer them. When disabled, search routes return HTTP 501 Not Implemented (RFC 9082 §5.1) |
+| `rdap.extensions` | *(none)* | Enable optional IANA-registered RDAP extensions. See [RDAP Extensions](#rdap-extensions) for supported values and their **conformance impact** |
+| `rdap.ttl0` | *(none)* | `{domain, nameserver, remarks}` TTL values emitted under the `ttl0` extension (only when `ttl0` is enabled) |
+| `rdap.geofeed.url` | *(none)* | HTTPS geofeed URL emitted as a `rel=geofeed` link on IP network objects (only when `geofeed1` is enabled) |
 | `rdap.port43_whois` | *(unset)* | Whois server host for the `port43` member |
 | `rdap.server_name` | *(unset)* | Server display name |
 | `rdap.version` | `1.2` | Server version string |
@@ -283,6 +287,101 @@ curl "http://localhost:8443/entities?handle=REG1*"
 curl "http://localhost:8443/nameservers?name=ns1*"
 curl "http://localhost:8443/nameservers?ip=8.8.8.8"
 ```
+
+## RDAP Extensions
+
+Optional, IANA-registered RDAP extensions can be enabled via `rdap.extensions`.
+Each one appends its extension identifier to the `rdapConformance` array and
+emits the extension's JSON members where applicable.
+
+> **⚠️ Conformance impact (verified against ICANN rdapct v3.1.0, gTLD registrar,
+> 2024 profile):**
+>
+> | Extension | Conformance with it enabled |
+> |-----------|:---:|
+> | `geofeed1` (RFC 9877) | ✅ 78 groups / 0 errors |
+> | `cidr0` (NRO) | ✅ 78 groups / 0 errors |
+> | `reverse_search` (RFC 9536) | ✅ 78 groups / 0 errors |
+> | `ttl0` (IETF draft) | ❌ **4 errors** (`-12208`): rdapct rejects the `ttl0_data` member on nameservers because it is a draft, not a published RFC, and isn't in rdapct's allowed-members schema |
+>
+> All extensions default to **OFF**, so the ICANN conformance array is unchanged
+> (78 groups / 0 errors) unless you explicitly opt in. CI's conformance job keeps
+> them off. If you enable `ttl0`, the ICANN conformance check will no longer pass
+> against your server until rdapct adds the draft — use it only if you don't need
+> the conformance gate.
+
+### `ttl0` — DNS TTL values (draft)
+
+Emits a `ttl0_data` member on domain and nameserver objects mapping DNS record
+type mnemonics to TTL seconds (`draft-ietf-regext-rdap-ttl-extension`).
+
+```yaml
+rdap:
+  extensions: ["ttl0"]
+  ttl0:
+    domain:      { NS: 3600, DS: 300 }
+    nameserver:  { A: 86400, AAAA: 86400 }
+    remarks:
+      - title: "TTL policy"
+        description: ["Values reflect the registry's configured TTLs."]
+```
+
+Example domain output:
+
+```json
+{
+  "rdapConformance": ["rdap_level_0", "...", "ttl0"],
+  "ttl0_data": { "values": { "NS": 3600, "DS": 300 }, "remarks": [...] }
+}
+```
+
+### `geofeed1` — geofeed links (RFC 9877)
+
+Adds a `rel="geofeed"` link (type `application/geofeed+csv`) to IP network
+objects so clients can fetch the geolocation feed (RFC 9632) for that network.
+
+```yaml
+rdap:
+  extensions: ["geofeed1"]
+  geofeed:
+    url: "https://geofeed.example.com/feed.csv"
+```
+
+### `cidr0` — CIDR expressions (NRO)
+
+Adds a `cidr0_cidrs` array to IP network objects, expressing each stored CIDR
+as `{v4prefix|v6prefix, length}` (useful for "off-bit" registrations).
+
+```json
+{
+  "rdapConformance": ["rdap_level_0", "cidr0"],
+  "cidr0_cidrs": [{ "v4prefix": "8.8.8.0", "length": 24 }]
+}
+```
+
+### `reverse_search` — reverse search (RFC 9536)
+
+Enables `GET /domains/reverse_search/entity` to find the domains related to an
+entity matching `handle`, `role`, `fn`, or `email` (the classic "reverse WHOIS").
+The help response advertises the supported properties under
+`reverse_search_properties`, and each response includes
+`reverse_search_properties_mapping` with the JSONPath used.
+
+```bash
+curl "http://localhost:8443/domains/reverse_search/entity?handle=REG1*"
+curl "http://localhost:8443/domains/reverse_search/entity?role=registrant"
+```
+
+```yaml
+rdap:
+  extensions: ["reverse_search"]
+```
+
+> **Note:** reverse search is implemented on the in-memory store. The
+> PostgreSQL/MySQL stores return **HTTP 501 Not Implemented** (as RFC 9536 §7
+> requires for unsupported reverse searches) because no reverse-search index is
+> maintained. Only one property predicate is accepted per request (400 if you
+> combine `handle` + `role`, etc.).
 
 ## Example Responses
 

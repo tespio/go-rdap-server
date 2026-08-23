@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/tespio/go-rdap-server/internal/config"
 	"github.com/tespio/go-rdap-server/internal/rdap"
 	"github.com/tespio/go-rdap-server/internal/service"
+	"github.com/tespio/go-rdap-server/internal/store"
 )
 
 type Handler struct {
@@ -61,6 +63,12 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 		r.Get("/nameservers", h.SearchNotImplemented)
 		r.Head("/nameservers", h.SearchNotImplemented)
 	}
+
+	// Reverse search (RFC 9536). Only the domains→entity reverse search is
+	// implemented; other combinations are not registered (404). When the
+	// storage backend cannot serve reverse searches the handler returns 501.
+	r.Get("/domains/reverse_search/entity", h.ReverseSearchDomains)
+	r.Head("/domains/reverse_search/entity", h.ReverseSearchDomains)
 }
 
 func (h *Handler) requestURL(r *http.Request) string {
@@ -99,6 +107,11 @@ func (h *Handler) Help(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	help := rdap.NewHelp(h.cfg.BaseURL, h.noticeOpts(), rateInfo, rdap.SearchInfo{Enabled: h.cfg.SearchEnabled})
+	// reverse_search (RFC 9536): advertise supported properties + conformance.
+	if h.cfg.ExtensionsEnabled("reverse_search") {
+		help.ReverseSearchProperties = h.svc.ReverseSearchProperties()
+		help.Conformance = rdap.WithExtensions(help.Conformance, "reverse_search")
+	}
 	writeJSON(w, http.StatusOK, help)
 }
 
@@ -160,9 +173,13 @@ func (h *Handler) LookupNameserver(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reqURL := h.requestURL(r)
+	conf := rdap.NewConformance()
+	if h.cfg.ExtensionsEnabled("ttl0") {
+		conf = rdap.WithExtensions(conf, "ttl0")
+	}
 	resp := rdap.NameserverResponse{
 		Nameserver:  ns,
-		Conformance: rdap.NewConformance(),
+		Conformance: conf,
 		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -199,10 +216,23 @@ func (h *Handler) LookupIPNetwork(w http.ResponseWriter, r *http.Request) {
 	reqURL := h.requestURL(r)
 	resp := rdap.IPNetworkResponse{
 		IPNetwork:   ipnet,
-		Conformance: rdap.NewConformance(),
+		Conformance: h.ipNetworkConformance(),
 		Notices:     rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ipNetworkConformance returns the base conformance plus any enabled extension
+// identifiers that apply to IP network responses (geofeed1, cidr0).
+func (h *Handler) ipNetworkConformance() rdap.Conformance {
+	conf := rdap.NewConformance()
+	if h.cfg.ExtensionsEnabled("geofeed1") {
+		conf = rdap.WithExtensions(conf, "geofeed1")
+	}
+	if h.cfg.ExtensionsEnabled("cidr0") {
+		conf = rdap.WithExtensions(conf, "cidr0")
+	}
+	return conf
 }
 
 func (h *Handler) LookupAutnum(w http.ResponseWriter, r *http.Request) {
@@ -243,6 +273,62 @@ func (h *Handler) LookupAutnum(w http.ResponseWriter, r *http.Request) {
 // server that does not implement searches must respond 501.
 func (h *Handler) SearchNotImplemented(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotImplemented, 501, "Search not implemented", "Search queries are disabled on this server")
+}
+
+// ReverseSearchDomains implements RFC 9536 reverse search for
+// /domains/reverse_search/entity. Supported query properties: handle, role,
+// fn, email. At least one property predicate is required. When the storage
+// backend cannot serve reverse searches, responds 501 per RFC 9536 §7.
+func (h *Handler) ReverseSearchDomains(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.ExtensionsEnabled("reverse_search") {
+		writeError(w, http.StatusNotImplemented, 501, "Reverse search not implemented", "The reverse_search extension is not enabled on this server")
+		return
+	}
+
+	q := r.URL.Query()
+	limit := h.cfg.MaxSearchLimit
+	if l := q.Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= limit {
+			limit = parsed
+		}
+	}
+
+	// Collect the property predicates present in the query.
+	type predicate struct{ property, pattern string }
+	var preds []predicate
+	for _, p := range []string{"handle", "role", "fn", "email"} {
+		if v := q.Get(p); v != "" {
+			preds = append(preds, predicate{property: p, pattern: v})
+		}
+	}
+	if len(preds) == 0 {
+		writeError(w, http.StatusBadRequest, 400, "Missing search parameter", "One of 'handle', 'role', 'fn', or 'email' is required")
+		return
+	}
+	// Only a single property predicate is supported for the reverse search.
+	if len(preds) > 1 {
+		writeError(w, http.StatusBadRequest, 400, "Ambiguous search", "Only one reverse search property may be specified")
+		return
+	}
+
+	results, err := h.svc.ReverseSearchDomainsByEntity(preds[0].property, preds[0].pattern, limit, h.requestURL(r))
+	if err != nil {
+		if errors.Is(err, store.ErrReverseSearchUnsupported) {
+			writeError(w, http.StatusNotImplemented, 501, "Reverse search not implemented", "The storage backend does not support reverse search")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, 500, "Reverse search failed", err.Error())
+		return
+	}
+
+	reqURL := h.requestURL(r)
+	resp := rdap.DomainSearchResult{
+		Conformance:                    rdap.WithExtensions(rdap.NewConformance(), "reverse_search"),
+		DomainSearchResults:            results,
+		Notices:                        rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
+		ReverseSearchPropertiesMapping: service.ReverseSearchMapping([]string{preds[0].property}),
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) SearchDomains(w http.ResponseWriter, r *http.Request) {

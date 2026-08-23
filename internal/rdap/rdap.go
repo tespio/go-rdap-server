@@ -203,6 +203,23 @@ func NewConformance2024() Conformance {
 	}
 }
 
+// WithExtensions appends the given extension identifiers to a conformance array,
+// preserving order and avoiding duplicates. Extensions are only appended when
+// the corresponding config flag is on; the base ICANN identifiers are untouched.
+func WithExtensions(c Conformance, extIDs ...string) Conformance {
+	seen := make(map[string]bool, len(c.Conformance)+len(extIDs))
+	for _, id := range c.Conformance {
+		seen[id] = true
+	}
+	for _, id := range extIDs {
+		if id != "" && !seen[id] {
+			c.Conformance = append(c.Conformance, id)
+			seen[id] = true
+		}
+	}
+	return c
+}
+
 // NoticeOptions carries optional registrar/registry customization for notices.
 // The ICANN-mandated notices (Status Codes, RDDS Inaccuracy Complaint Form) are
 // always emitted regardless; this only customizes the Terms of Service notice

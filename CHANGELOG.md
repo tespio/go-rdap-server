@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.1] - 2026-08-23
 
 ### Added
+- **Optional IANA RDAP extensions via `rdap.extensions`** — config-gated "extras"
+  that append their extension identifier to `rdapConformance` and emit the
+  extension's JSON members:
+  - `ttl0` — DNS TTL values (`ttl0_data`) on domain/nameserver objects
+    (draft-ietf-regext-rdap-ttl-extension), configured via `rdap.ttl0`.
+  - `geofeed1` — `rel=geofeed` link (RFC 9877) on IP network objects, configured
+    via `rdap.geofeed.url`.
+  - `cidr0` — `cidr0_cidrs` array (NRO) on IP network objects.
+  - `reverse_search` — `GET /domains/reverse_search/entity` (RFC 9536) with
+    `handle`/`role`/`fn`/`email` predicates, help `reverse_search_properties`,
+    and per-response `reverse_search_properties_mapping`. Implemented on the
+    in-memory store; PostgreSQL/MySQL return 501 (RFC 9536 §7).
+  - Unknown extension identifiers are rejected at config load.
+  - **Verified conformance impact** (ICANN rdapct v3.1.0, 2024 registrar):
+    `geofeed1`, `cidr0`, and `reverse_search` keep 78 groups / 0 errors;
+    `ttl0` **breaks conformance** (`-12208`, rdapct rejects `ttl0_data` on
+    nameservers because the draft isn't in its allowed-members schema). All
+    extensions default to OFF, so the CI conformance gate is unaffected.
 - **Client-side RDAP lookup page** — a dependency-free, single-file browser UI at
   `web/index.html` ("whois, modern"): auto-detecting lookups for domains, nameservers,
   entities, IP networks (v4 + v6), and ASNs; IANA bootstrap resolution (RFC 7484) to

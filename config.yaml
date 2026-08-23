@@ -56,6 +56,39 @@ rdap:
   # When disabled, search routes return HTTP 501 Not Implemented (RFC 9082 §5.1).
   # Set to true only if you truly need to support searches.
   search_enabled: false
+
+  # Optional IANA-registered RDAP extensions (https://www.iana.org/assignments/rdap-extensions).
+  # All extensions default to OFF. Enabling one appends its identifier to the
+  # rdapConformance array and emits the extension's JSON members where applicable.
+  #
+  # ⚠️ CONFORMANCE IMPACT (verified against ICANN rdapct v3.1.0, 2024 registrar profile):
+  #   - geofeed1, cidr0, reverse_search  -> still 78 groups / 0 errors
+  #   - ttl0                             -> BREAKS conformance: rdapct rejects the
+  #     ttl0_data member on nameservers (-12208, 4 errors). ttl0 is an IETF draft,
+  #     not a published RFC, and is not yet in rdapct's allowed-members schema.
+  #     Only enable ttl0 if you do not need the ICANN conformance check to pass.
+  #
+  # extensions:
+  #   - "ttl0"          # DNS TTL values on domain/nameserver objects (draft-ietf-regext-rdap-ttl-extension)
+  #   - "geofeed1"      # rel=geofeed link on IP network objects (RFC 9877)
+  #   - "cidr0"         # cidr0_cidrs array on IP network objects (NRO)
+  #   - "reverse_search" # /domains/reverse_search/entity (RFC 9536)
+  #
+  # ttl0 data (only used when "ttl0" is enabled):
+  # ttl0:
+  #   domain:
+  #     NS: 3600
+  #     DS: 300
+  #   nameserver:
+  #     A: 86400
+  #     AAAA: 86400
+  #   remarks:
+  #     - title: "TTL policy"
+  #       description: ["Values reflect the registry's configured TTLs."]
+  #
+  # geofeed1 data (only used when "geofeed1" is enabled):
+  # geofeed:
+  #   url: "https://geofeed.example.com/feed.csv"   # HTTPS geofeed URL (RFC 9632)
   port43_whois: "whois.example.com"
   server_name: "RDAP Server v1.2.1"
   version: "1.2.1"
