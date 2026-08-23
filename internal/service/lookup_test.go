@@ -175,14 +175,20 @@ func TestBaseURL(t *testing.T) {
 // letting us exercise the error-propagation branches of the service Search* wrappers.
 type failStore struct{}
 
-func (failStore) LookupDomain(name string) (*domain.Domain, error)    { return nil, errors.New("fail") }
+func (failStore) LookupDomain(name string) (*domain.Domain, error) { return nil, errors.New("fail") }
 func (failStore) GetDomainAggregate(name string) (*domain.DomainAggregate, error) {
 	return nil, errors.New("fail")
 }
-func (failStore) LookupContact(handle string) (*domain.Contact, error)    { return nil, errors.New("fail") }
-func (failStore) LookupNameserver(name string) (*domain.NameServer, error) { return nil, errors.New("fail") }
-func (failStore) LookupIPNetwork(cidr string) (*domain.IPNetwork, error)   { return nil, errors.New("fail") }
-func (failStore) LookupAutnum(asn int) (*domain.Autnum, error)             { return nil, errors.New("fail") }
+func (failStore) LookupContact(handle string) (*domain.Contact, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) LookupNameserver(name string) (*domain.NameServer, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) LookupIPNetwork(cidr string) (*domain.IPNetwork, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) LookupAutnum(asn int) (*domain.Autnum, error) { return nil, errors.New("fail") }
 func (failStore) SearchDomainsByName(pattern string, limit int) ([]domain.Domain, error) {
 	return nil, errors.New("fail")
 }
@@ -201,7 +207,7 @@ func (failStore) SearchNameserversByName(pattern string, limit int) ([]domain.Na
 func (failStore) SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error) {
 	return nil, errors.New("fail")
 }
-func (failStore) Ping() error { return nil }
+func (failStore) Ping() error  { return nil }
 func (failStore) Close() error { return nil }
 
 func TestSearchErrorPropagation(t *testing.T) {

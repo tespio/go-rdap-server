@@ -14,12 +14,12 @@ import (
 )
 
 type Claims struct {
-	Subject   string   `json:"sub"`
-	Issuer    string   `json:"iss"`
-	Audience  []string `json:"aud"`
-	Expiry    int64    `json:"exp"`
-	IssuedAt  int64    `json:"iat"`
-	Scope     string   `json:"scope,omitempty"`
+	Subject  string   `json:"sub"`
+	Issuer   string   `json:"iss"`
+	Audience []string `json:"aud"`
+	Expiry   int64    `json:"exp"`
+	IssuedAt int64    `json:"iat"`
+	Scope    string   `json:"scope,omitempty"`
 }
 
 type Authenticator interface {

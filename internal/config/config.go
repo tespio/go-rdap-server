@@ -9,23 +9,23 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Storage  StorageConfig  `yaml:"storage"`
-	RDAP     RDAPConfig     `yaml:"rdap"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Metrics  MetricsConfig  `yaml:"metrics"`
-	Rate     RateConfig     `yaml:"rate_limiting"`
+	Server  ServerConfig  `yaml:"server"`
+	Storage StorageConfig `yaml:"storage"`
+	RDAP    RDAPConfig    `yaml:"rdap"`
+	Auth    AuthConfig    `yaml:"auth"`
+	Metrics MetricsConfig `yaml:"metrics"`
+	Rate    RateConfig    `yaml:"rate_limiting"`
 }
 
 type ServerConfig struct {
-	Host            string        `yaml:"host"`
-	Port            int           `yaml:"port"`
-	ReadTimeout     time.Duration `yaml:"read_timeout"`
-	WriteTimeout    time.Duration `yaml:"write_timeout"`
-	IdleTimeout     time.Duration `yaml:"idle_timeout"`
-	MaxHeaderBytes  int           `yaml:"max_header_bytes"`
-	TLSCertFile     string        `yaml:"tls_cert_file"`
-	TLSKeyFile      string        `yaml:"tls_key_file"`
+	Host           string        `yaml:"host"`
+	Port           int           `yaml:"port"`
+	ReadTimeout    time.Duration `yaml:"read_timeout"`
+	WriteTimeout   time.Duration `yaml:"write_timeout"`
+	IdleTimeout    time.Duration `yaml:"idle_timeout"`
+	MaxHeaderBytes int           `yaml:"max_header_bytes"`
+	TLSCertFile    string        `yaml:"tls_cert_file"`
+	TLSKeyFile     string        `yaml:"tls_key_file"`
 }
 
 type StorageConfig struct {
@@ -81,10 +81,10 @@ type CustomNoticeConfig struct {
 }
 
 type AuthConfig struct {
-	Enabled   bool   `yaml:"enabled"`
+	Enabled      bool   `yaml:"enabled"`
 	JWKSEndpoint string `yaml:"jwks_endpoint"`
-	Issuer    string `yaml:"issuer"`
-	Audience  string `yaml:"audience"`
+	Issuer       string `yaml:"issuer"`
+	Audience     string `yaml:"audience"`
 }
 
 type MetricsConfig struct {

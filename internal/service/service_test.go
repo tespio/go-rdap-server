@@ -175,10 +175,10 @@ func TestAggregateWithSparseRegistrantDoesNotFallBackToExample(t *testing.T) {
 // vcard on a real response path.
 func TestVCardToJCardAlwaysHasFN(t *testing.T) {
 	cases := []struct {
-		name    string
-		v       *domain.VCard
+		name     string
+		v        *domain.VCard
 		fallback string
-		wantFn  string
+		wantFn   string
 	}{
 		{"nil vcard", nil, "HANDLE-1", "HANDLE-1"},
 		{"empty vcard", &domain.VCard{}, "HANDLE-2", "HANDLE-2"},

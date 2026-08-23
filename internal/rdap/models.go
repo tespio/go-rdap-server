@@ -7,23 +7,23 @@ type Conformance struct {
 }
 
 type Common struct {
-	ObjectClassName string      `json:"objectClassName,omitempty"`
-	Handle          string      `json:"handle,omitempty"`
-	Links           []Link      `json:"links,omitempty"`
-	Events          []Event     `json:"events,omitempty"`
-	Notices         []Notice    `json:"notices,omitempty"`
-	Remarks         []Remark    `json:"remarks,omitempty"`
-	Port43          string      `json:"port43,omitempty"`
-	Entities        []Entity    `json:"entities,omitempty"`
-	Status          []string    `json:"status,omitempty"`
+	ObjectClassName string   `json:"objectClassName,omitempty"`
+	Handle          string   `json:"handle,omitempty"`
+	Links           []Link   `json:"links,omitempty"`
+	Events          []Event  `json:"events,omitempty"`
+	Notices         []Notice `json:"notices,omitempty"`
+	Remarks         []Remark `json:"remarks,omitempty"`
+	Port43          string   `json:"port43,omitempty"`
+	Entities        []Entity `json:"entities,omitempty"`
+	Status          []string `json:"status,omitempty"`
 }
 
 type Link struct {
-	Value     string `json:"value,omitempty"`
-	Rel       string `json:"rel,omitempty"`
-	Href      string `json:"href,omitempty"`
-	Type      string `json:"type,omitempty"`
-	Title     string `json:"title,omitempty"`
+	Value string `json:"value,omitempty"`
+	Rel   string `json:"rel,omitempty"`
+	Href  string `json:"href,omitempty"`
+	Type  string `json:"type,omitempty"`
+	Title string `json:"title,omitempty"`
 }
 
 type Event struct {
@@ -47,17 +47,17 @@ type Remark struct {
 }
 
 type PublicID struct {
-	Type  string `json:"type,omitempty"`
+	Type       string `json:"type,omitempty"`
 	Identifier string `json:"identifier,omitempty"`
 }
 
 type Entity struct {
 	Common
-	VCardArray     []interface{} `json:"vcardArray,omitempty"`
-	Roles          []string      `json:"roles,omitempty"`
-	PublicIDs      []PublicID    `json:"publicIds,omitempty"`
-	Networks       []IPNetwork   `json:"networks,omitempty"`
-	AsEventActor   bool          `json:"asEventActor,omitempty"`
+	VCardArray   []interface{} `json:"vcardArray,omitempty"`
+	Roles        []string      `json:"roles,omitempty"`
+	PublicIDs    []PublicID    `json:"publicIds,omitempty"`
+	Networks     []IPNetwork   `json:"networks,omitempty"`
+	AsEventActor bool          `json:"asEventActor,omitempty"`
 }
 
 type IPNetwork struct {
@@ -75,27 +75,27 @@ type IPNetwork struct {
 type Domain struct {
 	Common
 	Conformance
-	LDHName      string        `json:"ldhName,omitempty"`
-	UnicodeName  string        `json:"unicodeName,omitempty"`
-	Variants     []Variant     `json:"variants,omitempty"`
-	Nameservers  []Nameserver  `json:"nameservers,omitempty"`
-	SecureDNS    *SecureDNS    `json:"secureDNS,omitempty"`
-	Network      *IPNetwork    `json:"network,omitempty"`
-	Notices      []Notice      `json:"notices,omitempty"`
-	PublicIDs    []PublicID    `json:"publicIds,omitempty"`
+	LDHName     string       `json:"ldhName,omitempty"`
+	UnicodeName string       `json:"unicodeName,omitempty"`
+	Variants    []Variant    `json:"variants,omitempty"`
+	Nameservers []Nameserver `json:"nameservers,omitempty"`
+	SecureDNS   *SecureDNS   `json:"secureDNS,omitempty"`
+	Network     *IPNetwork   `json:"network,omitempty"`
+	Notices     []Notice     `json:"notices,omitempty"`
+	PublicIDs   []PublicID   `json:"publicIds,omitempty"`
 }
 
 type Nameserver struct {
 	Common
-	LDHName     string   `json:"ldhName,omitempty"`
-	UnicodeName string   `json:"unicodeName,omitempty"`
+	LDHName     string     `json:"ldhName,omitempty"`
+	UnicodeName string     `json:"unicodeName,omitempty"`
 	IPAddresses *IPAddrSet `json:"ipAddresses,omitempty"`
 }
 
 type Variant struct {
-	Relation     []string        `json:"relation,omitempty"`
-	IDNTable     string          `json:"idnTable,omitempty"`
-	VariantNames []VariantName   `json:"variantNames,omitempty"`
+	Relation     []string      `json:"relation,omitempty"`
+	IDNTable     string        `json:"idnTable,omitempty"`
+	VariantNames []VariantName `json:"variantNames,omitempty"`
 }
 
 type VariantName struct {
@@ -109,29 +109,29 @@ type IPAddrSet struct {
 }
 
 type SecureDNS struct {
-	ZoneSigned      bool           `json:"zoneSigned"`
-	DelegationSigned bool          `json:"delegationSigned"`
-	MaxSigLife      *int           `json:"maxSigLife,omitempty"`
-	DSData          []DSData       `json:"dsData,omitempty"`
-	KeyData         []KeyData      `json:"keyData,omitempty"`
+	ZoneSigned       bool      `json:"zoneSigned"`
+	DelegationSigned bool      `json:"delegationSigned"`
+	MaxSigLife       *int      `json:"maxSigLife,omitempty"`
+	DSData           []DSData  `json:"dsData,omitempty"`
+	KeyData          []KeyData `json:"keyData,omitempty"`
 }
 
 type DSData struct {
-	KeyTag     int    `json:"keyTag,omitempty"`
-	Algorithm  int    `json:"algorithm,omitempty"`
-	DigestType int    `json:"digestType,omitempty"`
-	Digest     string `json:"digest,omitempty"`
+	KeyTag     int     `json:"keyTag,omitempty"`
+	Algorithm  int     `json:"algorithm,omitempty"`
+	DigestType int     `json:"digestType,omitempty"`
+	Digest     string  `json:"digest,omitempty"`
 	Events     []Event `json:"events,omitempty"`
 	Links      []Link  `json:"links,omitempty"`
 }
 
 type KeyData struct {
-	Flags    int      `json:"flags,omitempty"`
-	Protocol int      `json:"protocol,omitempty"`
+	Flags     int     `json:"flags,omitempty"`
+	Protocol  int     `json:"protocol,omitempty"`
 	Algorithm int     `json:"algorithm,omitempty"`
 	PublicKey string  `json:"publicKey,omitempty"`
-	Events   []Event  `json:"events,omitempty"`
-	Links    []Link   `json:"links,omitempty"`
+	Events    []Event `json:"events,omitempty"`
+	Links     []Link  `json:"links,omitempty"`
 }
 
 type DomainSearchResult struct {
@@ -154,7 +154,7 @@ type NameserverSearchResult struct {
 
 type Help struct {
 	Conformance
-	Notices     []Notice `json:"notices,omitempty"`
+	Notices []Notice `json:"notices,omitempty"`
 }
 
 // Top-level response wrappers for objects that can be embedded.
@@ -185,17 +185,17 @@ type AutnumResponse struct {
 
 type Autnum struct {
 	Common
-	StartAutnum uint32   `json:"startAutnum,omitempty"`
-	EndAutnum   uint32   `json:"endAutnum,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Type        string   `json:"type,omitempty"`
-	Country     string   `json:"country,omitempty"`
+	StartAutnum uint32 `json:"startAutnum,omitempty"`
+	EndAutnum   uint32 `json:"endAutnum,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Country     string `json:"country,omitempty"`
 }
 
 type ErrorResponse struct {
 	Conformance
-	ErrorCode    int      `json:"errorCode,omitempty"`
-	Title        string   `json:"title,omitempty"`
-	Description  []string `json:"description,omitempty"`
-	Notices      []Notice `json:"notices,omitempty"`
+	ErrorCode   int      `json:"errorCode,omitempty"`
+	Title       string   `json:"title,omitempty"`
+	Description []string `json:"description,omitempty"`
+	Notices     []Notice `json:"notices,omitempty"`
 }

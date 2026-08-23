@@ -39,11 +39,11 @@ func New(cfg *config.Config, store store.Interface, logger *zap.Logger) *Server 
 
 	// CORS
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "HEAD", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type", "Authorization"},
-		ExposedHeaders:   []string{"Link", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"},
-		MaxAge:           86400,
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{"GET", "HEAD", "OPTIONS"},
+		AllowedHeaders: []string{"Accept", "Content-Type", "Authorization"},
+		ExposedHeaders: []string{"Link", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"},
+		MaxAge:         86400,
 	}))
 
 	// Rate limiting

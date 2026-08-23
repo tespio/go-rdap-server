@@ -18,13 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/help` advertises disabled searches** — when `rdap.search_enabled: false` (the
   default), the `/help` response includes a "Search Disabled" notice documenting that
   search queries are unavailable, mirroring how enforced rate limits are advertised.
-- **Major test coverage expansion** — statement coverage raised from ~24% to **70.7%**:
-  `config` 100%, `metrics` 100%, `middleware` 99%, `service` 98.7%, `rdap` 97.5%,
-  `auth` 96.7%, `handlers` 87.8%, `server` 84.6%, `cmd/rdapd` 55.8%, `store` 51.1%
-  (unit-testable parts). Added tests across every layer: store JSON mapping + row
-  scanners + in-memory store, service lookups/searches, HTTP handlers, `/help`,
-  auth (JWT), metrics, middleware (logging/security/rate-limit client IP), config,
-  and the `rdapd` startup/shutdown path.
+- **Major test coverage expansion** — statement coverage raised from ~24% to **82.2%**
+  (with the Postgres integration tests; 70.7% without a DB). Per-package: `config` 100%,
+  `metrics` 100%, `middleware` 99%, `service` 98.7%, `rdap` 97.5%, `auth` 96.7%,
+  `handlers` 87.8%, `server` 84.6%, `store` 72.9%, `cmd/rdapd` 55.8%. Added tests across
+  every layer including comprehensive **Postgres integration tests** (`RDAP_TEST_DSN`)
+  covering all lookups, searches, the transactional aggregate, and the seed fixtures.
 
 ### Fixed
 - **`/ip/{network}` CIDR routing** — the route used chi's single-segment `{network}`
@@ -36,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Nil `metricsSrv` shutdown panic** — the old `main()` called
   `metricsSrv.Shutdown` unconditionally, panicking when metrics were disabled.
   `cmd/rdapd` now guards against a nil metrics server.
+- **PostgreSQL IP-network lookup** — `LookupIPNetwork` scanned the `inet` columns into
+  `string` and the `TEXT[]` `cidr` column into `[]byte`, and compared against the
+  untyped array; all three failed at runtime. Now casts `inet` to text, scans `cidr`
+  into `[]string`, and compares `$1::inet <<= ANY(cidr::inet[])`. The integration
+  tests caught and verify this.
+- **PostgreSQL contact search wildcards** — `SearchContactsByName` didn't translate
+  `*`/`?` glob wildcards into SQL `%`/`_` (unlike every other search), so patterns
+  like `REG1*` never matched. Now applies `patternToSQL`.
 
 ## [1.2.0] - 2026-08-19
 

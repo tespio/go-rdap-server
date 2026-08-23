@@ -9,8 +9,8 @@ import (
 
 func TestIPRangeV4(t *testing.T) {
 	tests := []struct {
-		cidr          string
-		start, end    uint64
+		cidr       string
+		start, end uint64
 	}{
 		{"8.8.8.0/24", 0x08080800, 0x080808ff},
 		{"1.0.0.0/24", 0x01000000, 0x010000ff},

@@ -16,11 +16,11 @@ import "time"
 type ObjectKind string
 
 const (
-	KindDomain      ObjectKind = "domain"
-	KindContact     ObjectKind = "entity"
-	KindNameserver  ObjectKind = "nameserver"
-	KindIPNetwork   ObjectKind = "ip_network"
-	KindAutnum      ObjectKind = "autnum"
+	KindDomain     ObjectKind = "domain"
+	KindContact    ObjectKind = "entity"
+	KindNameserver ObjectKind = "nameserver"
+	KindIPNetwork  ObjectKind = "ip_network"
+	KindAutnum     ObjectKind = "autnum"
 )
 
 // Metadata carries source-of-truth, versioning, and audit information common to
@@ -68,9 +68,9 @@ type AuditEntry struct {
 // Status is a registry status value (RFC 5731 statuses for domains/hosts,
 // or entity/network statuses). It can carry a rationale.
 type Status struct {
-	Value   string `json:"value"`
-	Reason  string `json:"reason,omitempty"`
-	Actor   string `json:"actor,omitempty"`
+	Value  string `json:"value"`
+	Reason string `json:"reason,omitempty"`
+	Actor  string `json:"actor,omitempty"`
 }
 
 // Event is a registry lifecycle event (registration, last changed, expiration,
@@ -85,10 +85,10 @@ type Event struct {
 type PrivacyState string
 
 const (
-	PrivacyPublic    PrivacyState = "public"
-	PrivacyRedacted  PrivacyState = "redacted"
-	PrivacyPrivate   PrivacyState = "private"
-	PrivacyProxy     PrivacyState = "proxy"
+	PrivacyPublic   PrivacyState = "public"
+	PrivacyRedacted PrivacyState = "redacted"
+	PrivacyPrivate  PrivacyState = "private"
+	PrivacyProxy    PrivacyState = "proxy"
 )
 
 // ContactRole enumerates the roles a contact can play on a domain.
@@ -126,7 +126,7 @@ type Contact struct {
 	RegistrarBaseURL string `json:"registrar_base_url,omitempty"`
 	// Nested entities (e.g. abuse contact under a registrar).
 	Entities []*Contact `json:"entities,omitempty"`
-	Metadata Metadata  `json:"metadata"`
+	Metadata Metadata   `json:"metadata"`
 }
 
 // PublicID is an external identifier (IANA Registrar ID, etc.).
@@ -137,13 +137,13 @@ type PublicID struct {
 
 // NameServer is a registry nameserver (host).
 type NameServer struct {
-	Handle      string      `json:"handle"`
-	LDHName     string      `json:"ldh_name"`
-	UnicodeName string      `json:"unicode_name"`
-	IPV4        []string    `json:"ipv4,omitempty"`
-	IPV6        []string    `json:"ipv6,omitempty"`
-	Status      []Status    `json:"status"`
-	Metadata    Metadata    `json:"metadata"`
+	Handle      string   `json:"handle"`
+	LDHName     string   `json:"ldh_name"`
+	UnicodeName string   `json:"unicode_name"`
+	IPV4        []string `json:"ipv4,omitempty"`
+	IPV6        []string `json:"ipv6,omitempty"`
+	Status      []Status `json:"status"`
+	Metadata    Metadata `json:"metadata"`
 }
 
 // DSRecord is a DNSSEC Delegation Signer record.
@@ -174,21 +174,21 @@ type SecureDNS struct {
 // Domain is the canonical registry domain aggregate. It carries the full set of
 // contacts, nameservers, statuses, events, DNSSEC state, and registry metadata.
 type Domain struct {
-	Handle      string        `json:"handle"`
-	LDHName     string        `json:"ldh_name"`
-	UnicodeName string        `json:"unicode_name"`
-	TLD         string        `json:"tld"`
-	Status      []Status      `json:"status"`
-	ExpiresAt   time.Time     `json:"expires_at"`
+	Handle      string    `json:"handle"`
+	LDHName     string    `json:"ldh_name"`
+	UnicodeName string    `json:"unicode_name"`
+	TLD         string    `json:"tld"`
+	Status      []Status  `json:"status"`
+	ExpiresAt   time.Time `json:"expires_at"`
 	// Contacts keyed by role. A role may map to multiple handles.
 	Contacts map[ContactRole][]string `json:"contacts"`
 	// Nameservers attached to the domain, with their full data.
 	Nameservers []NameServer `json:"nameservers"`
-	SecureDNS   *SecureDNS  `json:"secure_dns,omitempty"`
+	SecureDNS   *SecureDNS   `json:"secure_dns,omitempty"`
 	// Registrar is the handle of the sponsoring registrar (IANA Registrar ID or
 	// internal handle).
-	Registrar string    `json:"registrar"`
-	Metadata  Metadata  `json:"metadata"`
+	Registrar string   `json:"registrar"`
+	Metadata  Metadata `json:"metadata"`
 }
 
 // DomainAggregate is a domain plus its resolved related objects, all read from a
@@ -210,27 +210,27 @@ type DomainAggregate struct {
 
 // IPNetwork is a registry IP network (address block).
 type IPNetwork struct {
-	Handle       string    `json:"handle"`
-	StartAddress string    `json:"start_address"`
-	EndAddress   string    `json:"end_address"`
-	IPVersion    string    `json:"ip_version"`
-	CIDR         []string  `json:"cidr"`
-	Name         string    `json:"name,omitempty"`
-	Type         string    `json:"type,omitempty"`
-	Country      string    `json:"country,omitempty"`
-	Status       []Status  `json:"status"`
-	ParentHandle string    `json:"parent_handle,omitempty"`
-	Metadata     Metadata  `json:"metadata"`
+	Handle       string   `json:"handle"`
+	StartAddress string   `json:"start_address"`
+	EndAddress   string   `json:"end_address"`
+	IPVersion    string   `json:"ip_version"`
+	CIDR         []string `json:"cidr"`
+	Name         string   `json:"name,omitempty"`
+	Type         string   `json:"type,omitempty"`
+	Country      string   `json:"country,omitempty"`
+	Status       []Status `json:"status"`
+	ParentHandle string   `json:"parent_handle,omitempty"`
+	Metadata     Metadata `json:"metadata"`
 }
 
 // Autnum is a registry autonomous system number.
 type Autnum struct {
-	Handle     string   `json:"handle"`
-	StartASN   uint32   `json:"start_asn"`
-	EndASN     uint32   `json:"end_asn"`
-	Name       string   `json:"name,omitempty"`
-	Type       string   `json:"type,omitempty"`
-	Country    string   `json:"country,omitempty"`
-	Status     []Status `json:"status"`
-	Metadata   Metadata `json:"metadata"`
+	Handle   string   `json:"handle"`
+	StartASN uint32   `json:"start_asn"`
+	EndASN   uint32   `json:"end_asn"`
+	Name     string   `json:"name,omitempty"`
+	Type     string   `json:"type,omitempty"`
+	Country  string   `json:"country,omitempty"`
+	Status   []Status `json:"status"`
+	Metadata Metadata `json:"metadata"`
 }

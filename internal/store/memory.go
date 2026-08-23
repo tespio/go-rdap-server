@@ -193,7 +193,7 @@ func (s *MemoryStore) seed() {
 			*s.nameservers["NS2-NAME"],
 		},
 		Registrar: "2",
-		SecureDNS:   &domain.SecureDNS{ZoneSigned: false, DelegationSigned: false},
+		SecureDNS: &domain.SecureDNS{ZoneSigned: false, DelegationSigned: false},
 		Metadata: domain.Metadata{
 			Version:   1,
 			CreatedAt: now.Add(-365 * 24 * time.Hour),

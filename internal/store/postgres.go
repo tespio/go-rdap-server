@@ -263,25 +263,26 @@ func (s *PostgresStore) LookupNameserver(name string) (*domain.NameServer, error
 
 func (s *PostgresStore) LookupIPNetwork(cidr string) (*domain.IPNetwork, error) {
 	query := `
-		SELECT handle, start_address, end_address, ip_version, cidr,
+		SELECT handle, start_address::text, end_address::text, ip_version, cidr,
 		       name, type, country, status, created_at, updated_at
-		FROM ip_networks WHERE $1::inet <<= ANY(cidr)
+		FROM ip_networks WHERE $1::inet <<= ANY(cidr::inet[])
 	`
 
 	var record domain.IPNetwork
-	var cidrJSON, statusJSON []byte
+	var statusJSON []byte
+	var cidrValues []string
 	var created, updated time.Time
 
 	err := s.pool.QueryRow(context.Background(), query, cidr).Scan(
 		&record.Handle, &record.StartAddress, &record.EndAddress,
-		&record.IPVersion, &cidrJSON, &record.Name, &record.Type,
+		&record.IPVersion, &cidrValues, &record.Name, &record.Type,
 		&record.Country, &statusJSON, &created, &updated,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("IP network lookup: %w", err)
 	}
 
-	json.Unmarshal(cidrJSON, &record.CIDR)
+	record.CIDR = cidrValues
 	record.Status = parseStatus(statusJSON)
 	record.Metadata = domain.Metadata{
 		Version:   1,
@@ -443,7 +444,7 @@ func (s *PostgresStore) SearchContactsByName(pattern string, limit int) ([]domai
 		LIMIT $2
 	`
 
-	sqlPattern := "%" + pattern + "%"
+	sqlPattern := "%" + patternToSQL(pattern) + "%"
 	rows, err := s.pool.Query(context.Background(), query, sqlPattern, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search entities: %w", err)

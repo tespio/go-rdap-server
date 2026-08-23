@@ -369,9 +369,9 @@ func (h *Handler) SearchNameservers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := rdap.NameserverSearchResult{
-		Conformance:              rdap.NewConformance(),
-		NameserverSearchResults:  results,
-		Notices:                  rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
+		Conformance:             rdap.NewConformance(),
+		NameserverSearchResults: results,
+		Notices:                 rdap.NewNoticesWithICANN(reqURL, h.cfg.BaseURL, h.noticeOpts()),
 	}
 
 	writeJSON(w, http.StatusOK, resp)
