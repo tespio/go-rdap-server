@@ -68,6 +68,9 @@ func run(configPath string, logger *zap.Logger, quit <-chan os.Signal) error {
 	var whoisSrv *whois.Server
 	if cfg.Whois.Enabled {
 		whoisSrv = whois.New(cfg.WhoisAddr(), whois.StoreLookup(st), logger)
+		if err := whoisSrv.Listen(); err != nil {
+			return err
+		}
 		go func() {
 			if err := whoisSrv.Serve(ctx); err != nil && err != net.ErrClosed {
 				logger.Error("whois server error", zap.Error(err))

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -74,7 +75,9 @@ type Server struct {
 	addr   string
 	lookup LookupFunc
 	logger *zap.Logger
-	ln     net.Listener
+
+	mu sync.Mutex
+	ln net.Listener
 }
 
 // New builds a WHOIS gateway. lookup resolves domain queries; pass
@@ -86,15 +89,39 @@ func New(addr string, lookup LookupFunc, logger *zap.Logger) *Server {
 	return &Server{addr: addr, lookup: lookup, logger: logger}
 }
 
-// Serve starts the WHOIS listener and blocks until the context is cancelled.
-func (s *Server) Serve(ctx context.Context) error {
+// Listen binds the WHOIS listener synchronously. Call before Serve so the
+// bound address is available (e.g. Addr()) without racing the accept loop.
+func (s *Server) Listen() error {
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("whois listen %s: %w", s.addr, err)
 	}
+	s.mu.Lock()
 	s.ln = ln
-	defer ln.Close()
+	s.mu.Unlock()
 	s.logger.Info("whois server listening", zap.String("addr", s.addr))
+	return nil
+}
+
+// Addr returns the bound listener address, or nil before Listen.
+func (s *Server) Addr() net.Addr {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ln == nil {
+		return nil
+	}
+	return s.ln.Addr()
+}
+
+// Serve accepts connections on the listener (which must be bound via Listen)
+// and blocks until the context is cancelled or the listener closes.
+func (s *Server) Serve(ctx context.Context) error {
+	s.mu.Lock()
+	ln := s.ln
+	s.mu.Unlock()
+	if ln == nil {
+		return fmt.Errorf("whois serve: listener not started; call Listen first")
+	}
 
 	go func() {
 		<-ctx.Done()
@@ -118,8 +145,12 @@ func (s *Server) Serve(ctx context.Context) error {
 
 // Shutdown closes the listener.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.ln != nil {
-		return s.ln.Close()
+		err := s.ln.Close()
+		s.ln = nil
+		return err
 	}
 	return nil
 }

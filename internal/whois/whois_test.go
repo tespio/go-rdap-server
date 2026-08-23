@@ -47,18 +47,17 @@ func TestQueryWithDomainAggregateStore(t *testing.T) {
 		t.Fatalf("memory store: %v", err)
 	}
 	s := New("127.0.0.1:0", StoreLookup(st), zap.NewNop())
+	if err := s.Listen(); err != nil {
+		t.Fatalf("listen: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go s.Serve(ctx)
-	deadline := time.Now().Add(3 * time.Second)
-	for s.ln == nil && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if s.ln == nil {
-		t.Fatal("whois server did not start")
+	if s.Addr() == nil {
+		t.Fatal("whois server has no bound address")
 	}
 
-	conn, err := net.Dial("tcp", s.ln.Addr().String())
+	conn, err := net.Dial("tcp", s.Addr().String())
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
