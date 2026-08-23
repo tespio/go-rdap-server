@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -254,6 +255,156 @@ func TestHelpHandler(t *testing.T) {
 	rec = doRequest(t, router, http.MethodGet, "/")
 	if rec.Code != http.StatusOK {
 		t.Errorf("root expected 200, got %d", rec.Code)
+	}
+}
+
+func TestSearchEntitiesHandler(t *testing.T) {
+	router := newTestHandler(t, true)
+
+	// fn search (matched against handles in the memory store).
+	rec := doRequest(t, router, http.MethodGet, "/entities?fn=REG1*")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("fn search expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var er rdap.EntitySearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &er); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(er.EntitySearchResults) == 0 {
+		t.Error("expected entity results")
+	}
+
+	// handle search.
+	rec = doRequest(t, router, http.MethodGet, "/entities?handle=REG1*")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handle search expected 200, got %d", rec.Code)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &er); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(er.EntitySearchResults) == 0 {
+		t.Error("expected entity results for handle search")
+	}
+
+	// Missing parameter -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/entities")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing param expected 400, got %d", rec.Code)
+	}
+
+	// Both fn and handle -> ambiguous -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/entities?fn=REG1*&handle=REG1*")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("ambiguous expected 400, got %d", rec.Code)
+	}
+}
+
+func TestSearchNameserversHandler(t *testing.T) {
+	router := newTestHandler(t, true)
+
+	// name search.
+	rec := doRequest(t, router, http.MethodGet, "/nameservers?name=ns1*")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("name search expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var nr rdap.NameserverSearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &nr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(nr.NameserverSearchResults) == 0 {
+		t.Error("expected nameserver results")
+	}
+
+	// ip search.
+	rec = doRequest(t, router, http.MethodGet, "/nameservers?ip=8.8.8.8")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ip search expected 200, got %d", rec.Code)
+	}
+
+	// Missing parameter -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/nameservers")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing param expected 400, got %d", rec.Code)
+	}
+
+	// Both name and ip -> ambiguous -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/nameservers?name=ns1*&ip=8.8.8.8")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("ambiguous expected 400, got %d", rec.Code)
+	}
+}
+
+func TestSearchDomainsByNSAndLimit(t *testing.T) {
+	router := newTestHandler(t, true)
+
+	// nsLdhName search.
+	rec := doRequest(t, router, http.MethodGet, "/domains?nsLdhName=ns1.example.com")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nsLdhName search expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var dr rdap.DomainSearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &dr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(dr.DomainSearchResults) == 0 {
+		t.Error("expected domain results")
+	}
+
+	// Both name and nsLdhName -> ambiguous -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/domains?name=example*&nsLdhName=ns1.example.com")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("ambiguous expected 400, got %d", rec.Code)
+	}
+
+	// Missing parameter -> 400.
+	rec = doRequest(t, router, http.MethodGet, "/domains")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing param expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRequestURLSchemes(t *testing.T) {
+	cfg := config.RDAPConfig{
+		BaseURL:        "https://rdap.example.com",
+		Mode:           "registrar",
+		MaxSearchLimit: 100,
+		SearchEnabled:  false,
+	}
+	st, err := store.NewMemoryStore(config.StorageConfig{})
+	if err != nil {
+		t.Fatalf("memory store: %v", err)
+	}
+	svc := service.New(st, cfg)
+
+	cases := []struct {
+		name       string
+		host       string
+		tls        bool
+		xfp        string
+		port       int
+		wantPrefix string
+	}{
+		{"plain http adds port", "rdap.example.com", false, "", 8443, "http://rdap.example.com:8443/domain/example.com"},
+		{"default http port omitted", "rdap.example.com", false, "", 80, "http://rdap.example.com/domain/example.com"},
+		{"https via TLS", "rdap.example.com", true, "", 443, "https://rdap.example.com/domain/example.com"},
+		{"https via forwarded proto", "rdap.example.com", false, "https", 8443, "https://rdap.example.com:8443/domain/example.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hh := New(svc, cfg, config.RateConfig{}, tc.port)
+			req := httptest.NewRequest(http.MethodGet, "/domain/example.com", nil)
+			req.Host = tc.host
+			if tc.tls {
+				req.TLS = &tls.ConnectionState{}
+			}
+			if tc.xfp != "" {
+				req.Header.Set("X-Forwarded-Proto", tc.xfp)
+			}
+			got := hh.requestURL(req)
+			if got != tc.wantPrefix {
+				t.Errorf("requestURL = %q, want %q", got, tc.wantPrefix)
+			}
+		})
 	}
 }
 

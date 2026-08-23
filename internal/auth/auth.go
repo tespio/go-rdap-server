@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -87,59 +88,7 @@ func (j *JWTAuthenticator) ValidateToken(token string) (*Claims, error) {
 }
 
 func decodeBase64URL(s string) ([]byte, error) {
-	// Add padding
-	switch len(s) % 4 {
-	case 2:
-		s += "=="
-	case 3:
-		s += "="
-	}
-
-	// Replace URL-safe characters
-	s = strings.ReplaceAll(s, "-", "+")
-	s = strings.ReplaceAll(s, "_", "/")
-
-	// Standard base64 decode
-	decoded := make([]byte, len(s)*3/4)
-	n := 0
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		var val byte
-		switch {
-		case c >= 'A' && c <= 'Z':
-			val = c - 'A'
-		case c >= 'a' && c <= 'z':
-			val = c - 'a' + 26
-		case c >= '0' && c <= '9':
-			val = c - '0' + 52
-		case c == '+':
-			val = 62
-		case c == '/':
-			val = 63
-		case c == '=':
-			break
-		default:
-			return nil, fmt.Errorf("invalid character: %c", c)
-		}
-
-		switch i % 4 {
-		case 0:
-			decoded[n] = val << 2
-		case 1:
-			decoded[n] |= val >> 4
-			n++
-			decoded[n] = val << 4
-		case 2:
-			decoded[n] |= val >> 2
-			n++
-			decoded[n] = val << 6
-		case 3:
-			decoded[n] |= val
-			n++
-		}
-	}
-
-	return decoded[:n], nil
+	return base64.RawURLEncoding.DecodeString(s)
 }
 
 // NoopAuthenticator is used when auth is disabled

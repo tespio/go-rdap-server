@@ -24,16 +24,28 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	cfg, err := config.Load(*configPath)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	if err := run(*configPath, logger, quit); err != nil {
+		logger.Fatal("server failed", zap.Error(err))
+	}
+}
+
+// run loads the config, starts the servers, and blocks until a signal is
+// received, then shuts everything down gracefully. It is separated from main so
+// the startup/shutdown logic is unit-testable.
+func run(configPath string, logger *zap.Logger, quit <-chan os.Signal) error {
+	cfg, err := config.Load(configPath)
 	if err != nil {
-		logger.Fatal("failed to load config", zap.Error(err))
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	store, err := store.New(cfg.Storage)
+	st, err := store.New(cfg.Storage)
 	if err != nil {
-		logger.Fatal("failed to init store", zap.Error(err))
+		return fmt.Errorf("failed to init store: %w", err)
 	}
-	defer store.Close()
+	defer st.Close()
 
 	metricsSrv := metrics.NewServer(cfg.Metrics)
 	if metricsSrv != nil {
@@ -45,7 +57,7 @@ func main() {
 		}()
 	}
 
-	srv := server.New(cfg, store, logger)
+	srv := server.New(cfg, st, logger)
 
 	go func() {
 		logger.Info("RDAP server starting",
@@ -61,25 +73,26 @@ func main() {
 			err = srv.ListenAndServe()
 		}
 		if err != nil && err != http.ErrServerClosed {
-			logger.Fatal("server error", zap.Error(err))
+			logger.Error("server error", zap.Error(err))
+			return
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
 	logger.Info("shutting down servers...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Fatal("server forced to shutdown", zap.Error(err))
+		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
-	if err := metricsSrv.Shutdown(ctx); err != nil {
-		logger.Error("metrics server forced to shutdown", zap.Error(err))
+	if metricsSrv != nil {
+		if err := metricsSrv.Shutdown(ctx); err != nil {
+			logger.Error("metrics server forced to shutdown", zap.Error(err))
+		}
 	}
 
 	logger.Info("server exited")
+	return nil
 }

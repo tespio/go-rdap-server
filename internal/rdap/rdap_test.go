@@ -1,6 +1,7 @@
 package rdap
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -215,5 +216,150 @@ func TestValidateIP(t *testing.T) {
 	}
 	if ValidateIP("not-an-ip", 4) {
 		t.Error("not-an-ip should be invalid")
+	}
+	// IPv4-mapped IPv6 is accepted as v4.
+	if !ValidateIP("::ffff:8.8.8.8", 4) {
+		t.Error("::ffff:8.8.8.8 should be valid IPv4 (4-in-6)")
+	}
+}
+
+func TestValidateDomainName(t *testing.T) {
+	for _, ok := range []string{"example.com", "a.b.co.uk", "xn--bcher-kva.com"} {
+		if err := ValidateDomainName(ok); err != nil {
+			t.Errorf("ValidateDomainName(%q): %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "singlelabel", "a..b", ".leading", "trailing.", strings.Repeat("a", 254), strings.Repeat("a", 64) + ".com"} {
+		if err := ValidateDomainName(bad); err == nil {
+			t.Errorf("ValidateDomainName(%q): expected error", bad)
+		}
+	}
+}
+
+func TestValidateLDHName(t *testing.T) {
+	if !ValidateLDHName("example.com") {
+		t.Error("example.com should be valid LDH")
+	}
+	for _, bad := range []string{"", "-bad.com", "bad-.com", "exa mple.com", "a..b", strings.Repeat("a", 254)} {
+		if ValidateLDHName(bad) {
+			t.Errorf("ValidateLDHName(%q): expected false", bad)
+		}
+	}
+}
+
+func TestIsTLDSupported(t *testing.T) {
+	if !IsTLDSupported("com", []string{"com", "net"}) {
+		t.Error("com should be supported")
+	}
+	if !IsTLDSupported("COM", []string{"com", "net"}) {
+		t.Error("COM should match case-insensitively")
+	}
+	if IsTLDSupported("org", []string{"com", "net"}) {
+		t.Error("org should not be supported")
+	}
+	if IsTLDSupported("com", nil) {
+		t.Error("empty TLD list should support nothing")
+	}
+}
+
+func TestParseCIDR(t *testing.T) {
+	cidr, err := ParseCIDR("8.8.8.0/24")
+	if err != nil {
+		t.Fatalf("ParseCIDR: %v", err)
+	}
+	if cidr.String() != "8.8.8.0/24" {
+		t.Errorf("cidr = %q", cidr.String())
+	}
+	if _, err := ParseCIDR("not-a-cidr"); err == nil {
+		t.Error("expected error for invalid CIDR")
+	}
+}
+
+func TestNewNotices(t *testing.T) {
+	notices := NewNotices("https://rdap.example.com", nil)
+	titles := map[string]bool{}
+	for _, n := range notices {
+		titles[n.Title] = true
+	}
+	if !titles["Terms of Service"] {
+		t.Error("missing ToS notice")
+	}
+	if !titles["Rate Limiting"] {
+		t.Error("missing Rate Limiting notice")
+	}
+}
+
+func TestNewHelp(t *testing.T) {
+	h := NewHelp("https://rdap.example.com", nil, RateLimitInfo{}, SearchInfo{Enabled: false})
+	if len(h.Conformance.Conformance) == 0 {
+		t.Error("help conformance empty")
+	}
+	found := false
+	for _, n := range h.Notices {
+		if n.Title == "Search Disabled" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("NewHelp with disabled search should include Search Disabled notice")
+	}
+}
+
+func TestNewHelpNoticesCustomAndBurst(t *testing.T) {
+	// Custom notice with empty URL and empty rel -> defaults applied.
+	opts := &NoticeOptions{Custom: []CustomNotice{
+		{Title: "Data Policy", Description: []string{"Policy"}},
+	}}
+	notices := NewHelpNotices("https://rdap.example.com", opts, RateLimitInfo{
+		Enabled: true, Requests: 100, Window: 0, Burst: 50, // zero window -> defaults to a minute
+	}, SearchInfo{Enabled: true})
+
+	var customFound bool
+	for _, n := range notices {
+		if n.Title == "Data Policy" {
+			customFound = true
+			if n.Links[0].Href != "https://rdap.example.com/help" {
+				t.Errorf("custom href = %q (expected default /help)", n.Links[0].Href)
+			}
+			if n.Links[0].Rel != "terms-of-service" {
+				t.Errorf("custom rel = %q (expected default)", n.Links[0].Rel)
+			}
+		}
+	}
+	if !customFound {
+		t.Error("custom notice not present")
+	}
+
+	// burstSuffix with a positive burst.
+	if got := burstSuffix(50); got != ", with a burst allowance of 50" {
+		t.Errorf("burstSuffix(50) = %q", got)
+	}
+	if got := burstSuffix(0); got != "" {
+		t.Errorf("burstSuffix(0) = %q", got)
+	}
+}
+
+func TestNewNoticesWithICANNCustomNoURL(t *testing.T) {
+	opts := &NoticeOptions{Custom: []CustomNotice{
+		{Title: "Custom", Description: []string{"Desc"}},
+	}}
+	notices := NewNoticesWithICANN("https://rdap.example.com/domain/example.com", "https://rdap.example.com", opts)
+	for _, n := range notices {
+		if n.Title == "Custom" {
+			if n.Links[0].Href != "https://rdap.example.com/help" {
+				t.Errorf("custom href = %q, want default /help", n.Links[0].Href)
+			}
+			if n.Links[0].Rel != "terms-of-service" {
+				t.Errorf("custom rel = %q, want default", n.Links[0].Rel)
+			}
+		}
+	}
+}
+
+func TestNormalizeDomainNameIDNError(t *testing.T) {
+	// A label that is far too long should fail IDNA conversion.
+	long := strings.Repeat("é", 64) + ".com"
+	if _, _, err := NormalizeDomainName(long); err == nil {
+		t.Error("expected error for over-long unicode label")
 	}
 }

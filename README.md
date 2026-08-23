@@ -5,7 +5,7 @@
 [![ICANN Conformance](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/conformance.yml?branch=master&label=ICANN%20RDAPCT%20CI&logo=github)](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml)
 [![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/Coverage-50.2%25-yellow?logo=codecov&logoColor=white)](#testing--coverage)
+[![Coverage](https://img.shields.io/badge/Coverage-70.7%25-yellow?logo=codecov&logoColor=white)](#testing--coverage)
 [![RDAPCT: 2024 Registrar - 0 errors](https://img.shields.io/badge/RDAPCT-2024%20Registrar%20%E2%9C%94%200%20errors-brightgreen)](README.md#icann-conformance)
 [![RDAPCT: 2024 Registry - 0 errors*](https://img.shields.io/badge/RDAPCT-2024%20Registry%20%E2%9C%94%200%20errors*%20-blue)](README.md#icann-conformance)
 
@@ -883,24 +883,29 @@ Current statement coverage (measured locally, `make test-cover`):
 | Package | Coverage |
 |---------|:---:|
 | `internal/config` | 100.0% |
-| `internal/service` | 94.6% |
-| `internal/rdap` | 67.8% |
-| `internal/handlers` | 62.8% |
-| `internal/middleware` | 47.5% |
-| `internal/store` | 33.9%* |
-| **Total** | **50.2%** |
+| `internal/metrics` | 100.0% |
+| `internal/middleware` | 99.0% |
+| `internal/service` | 98.7% |
+| `internal/rdap` | 97.5% |
+| `internal/auth` | 96.7% |
+| `internal/handlers` | 87.8% |
+| `internal/server` | 84.6% |
+| `internal/store` | 51.1%* |
+| `cmd/rdapd` | 55.8% |
+| **Total** | **70.7%** |
 
-\* `internal/store`'s Postgres/MySQL integration tests require a live database and
-are gated behind `RDAP_TEST_DSN`, so they don't count toward the no-DB local run.
-The unit-tested parts (JSON mapping, in-memory store, IP-range helpers) are fully
-covered.
+\* `internal/store`'s Postgres/MySQL query methods require a live database and are
+gated behind `RDAP_TEST_DSN`, so they don't count toward the no-DB local run. The
+DB-agnostic parts (JSON mapping, in-memory store, IP-range helpers, row scanners)
+are fully covered; DB-backed paths are covered by the integration tests CI runs
+against fresh PostgreSQL and MySQL instances.
 
-> The RDAP mapping (`service`), wire-format (`rdap`), `handlers`, and `config`
-> layers now have meaningful unit tests — the code most likely to affect
-> conformance and operator behavior. The project is also validated end-to-end
-> against the ICANN conformance tool in CI (see
-> [ICANN Conformance](#icann-conformance)). The biggest remaining gap is
-> `middleware`; DB-backed store paths are covered by integration tests in CI.
+> The config, metrics, middleware, service, rdap, auth, handler, and server layers
+> all have strong unit coverage — the code most likely to affect conformance and
+> operator behavior. The project is also validated end-to-end against the ICANN
+> conformance tool in CI (see [ICANN Conformance](#icann-conformance)). The
+> remaining gaps are the DB-bound store methods (covered by CI integration tests)
+> and the TLS/startup paths in `cmd/rdapd`.
 
 ```bash
 make test          # go test -v -race ./...

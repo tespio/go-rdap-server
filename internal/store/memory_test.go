@@ -3,6 +3,7 @@ package store
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tespio/go-rdap-server/internal/config"
 	"github.com/tespio/go-rdap-server/internal/domain"
@@ -261,6 +262,25 @@ func TestMemoryStoreGlobInvalid(t *testing.T) {
 	if _, err := s.SearchDomainsByName("[", 0); err == nil {
 		t.Error("expected error for invalid glob pattern")
 	}
+	if _, err := s.SearchContactsByName("[", 0); err == nil {
+		t.Error("expected error for invalid glob pattern (contacts)")
+	}
+	if _, err := s.SearchNameserversByName("[", 0); err == nil {
+		t.Error("expected error for invalid glob pattern (nameservers)")
+	}
+}
+
+func TestMemoryStoreQuestionWildcard(t *testing.T) {
+	s := newMemoryStore(t)
+
+	// "example?com" -> "example.com" matches via single-char wildcard.
+	results, err := s.SearchDomainsByName("example?com", 0)
+	if err != nil {
+		t.Fatalf("SearchDomainsByName(?): %v", err)
+	}
+	if len(results) != 1 || results[0].LDHName != "example.com" {
+		t.Errorf("results = %+v", results)
+	}
 }
 
 func TestStoreNewDriver(t *testing.T) {
@@ -277,5 +297,46 @@ func TestStoreNewDriver(t *testing.T) {
 	}
 	if _, err := s.LookupDomain(strings.ToUpper("example.com")); err != nil {
 		t.Errorf("case-insensitive lookup failed: %v", err)
+	}
+}
+
+func TestNewMemoryStoreCacheTTL(t *testing.T) {
+	// Custom valid TTL.
+	s, err := NewMemoryStore(config.StorageConfig{CacheTTL: "30s"})
+	if err != nil {
+		t.Fatalf("NewMemoryStore: %v", err)
+	}
+	if s.cacheTTL != 30*time.Second {
+		t.Errorf("cacheTTL = %v, want 30s", s.cacheTTL)
+	}
+
+	// Invalid TTL -> default 5m.
+	s, err = NewMemoryStore(config.StorageConfig{CacheTTL: "not-a-duration"})
+	if err != nil {
+		t.Fatalf("NewMemoryStore: %v", err)
+	}
+	if s.cacheTTL != 5*time.Minute {
+		t.Errorf("cacheTTL = %v, want default 5m", s.cacheTTL)
+	}
+
+	// Empty TTL -> default 5m.
+	s, err = NewMemoryStore(config.StorageConfig{})
+	if err != nil {
+		t.Fatalf("NewMemoryStore: %v", err)
+	}
+	if s.cacheTTL != 5*time.Minute {
+		t.Errorf("cacheTTL = %v, want default 5m", s.cacheTTL)
+	}
+}
+
+func TestStrHelper(t *testing.T) {
+	if got := str("abc"); got != "abc" {
+		t.Errorf("str(string) = %q", got)
+	}
+	if got := str(123); got != "" {
+		t.Errorf("str(non-string) = %q, want empty", got)
+	}
+	if got := str(nil); got != "" {
+		t.Errorf("str(nil) = %q, want empty", got)
 	}
 }

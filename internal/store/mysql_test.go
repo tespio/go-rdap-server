@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/tespio/go-rdap-server/internal/config"
 )
 
 func TestIPRangeV4(t *testing.T) {
@@ -170,5 +171,16 @@ func TestNormalizeMySQLDSNParseable(t *testing.T) {
 	}
 	if mc.User != "rdap" || mc.Passwd != "rdap" {
 		t.Errorf("credentials = %q:%q, want rdap:rdap", mc.User, mc.Passwd)
+	}
+}
+
+func TestNewMySQLStoreInvalidDSN(t *testing.T) {
+	// An unparseable DSN fails fast, before any network connection is attempted.
+	if _, err := NewMySQLStore(config.StorageConfig{DSN: "not-a-dsn@@"}); err == nil {
+		t.Error("expected error for invalid DSN")
+	}
+	// Empty driver DSN also fails fast.
+	if _, err := NewMySQLStore(config.StorageConfig{DSN: ""}); err == nil {
+		t.Error("expected error for empty DSN")
 	}
 }

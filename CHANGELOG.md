@@ -18,15 +18,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/help` advertises disabled searches** — when `rdap.search_enabled: false` (the
   default), the `/help` response includes a "Search Disabled" notice documenting that
   search queries are unavailable, mirroring how enforced rate limits are advertised.
-- **Major test coverage expansion** — statement coverage raised from ~24% to **50.2%**:
-  `config` 100%, `service` 94.6%, `handlers` 62.8%, `store` 33.9% (unit-testable parts).
-  Added tests for store JSON mapping + in-memory store, service lookup/search wrappers,
-  HTTP lookup handlers, `/help`, and config load/validate/defaults.
+- **Major test coverage expansion** — statement coverage raised from ~24% to **70.7%**:
+  `config` 100%, `metrics` 100%, `middleware` 99%, `service` 98.7%, `rdap` 97.5%,
+  `auth` 96.7%, `handlers` 87.8%, `server` 84.6%, `cmd/rdapd` 55.8%, `store` 51.1%
+  (unit-testable parts). Added tests across every layer: store JSON mapping + row
+  scanners + in-memory store, service lookups/searches, HTTP handlers, `/help`,
+  auth (JWT), metrics, middleware (logging/security/rate-limit client IP), config,
+  and the `rdapd` startup/shutdown path.
 
 ### Fixed
 - **`/ip/{network}` CIDR routing** — the route used chi's single-segment `{network}`
   param, so `/ip/8.8.8.0/24` (CIDR contains a slash) returned 404. Now uses `/ip/*`
   with the full captured path, so CIDR lookups work as documented.
+- **JWT claim base64 decoding** — replaced the hand-rolled decoder (which emitted a
+  trailing NUL byte) with `base64.RawURLEncoding`, the correct decoder for JWT
+  payloads.
+- **Nil `metricsSrv` shutdown panic** — the old `main()` called
+  `metricsSrv.Shutdown` unconditionally, panicking when metrics were disabled.
+  `cmd/rdapd` now guards against a nil metrics server.
 
 ## [1.2.0] - 2026-08-19
 

@@ -1,9 +1,11 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/tespio/go-rdap-server/internal/config"
+	"github.com/tespio/go-rdap-server/internal/domain"
 	"github.com/tespio/go-rdap-server/internal/store"
 )
 
@@ -166,5 +168,58 @@ func TestBaseURL(t *testing.T) {
 	svc := lookupService()
 	if got := svc.BaseURL(); got != "https://rdap.example.com" {
 		t.Errorf("BaseURL = %q", got)
+	}
+}
+
+// failStore is a store.Interface that returns an error from every search,
+// letting us exercise the error-propagation branches of the service Search* wrappers.
+type failStore struct{}
+
+func (failStore) LookupDomain(name string) (*domain.Domain, error)    { return nil, errors.New("fail") }
+func (failStore) GetDomainAggregate(name string) (*domain.DomainAggregate, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) LookupContact(handle string) (*domain.Contact, error)    { return nil, errors.New("fail") }
+func (failStore) LookupNameserver(name string) (*domain.NameServer, error) { return nil, errors.New("fail") }
+func (failStore) LookupIPNetwork(cidr string) (*domain.IPNetwork, error)   { return nil, errors.New("fail") }
+func (failStore) LookupAutnum(asn int) (*domain.Autnum, error)             { return nil, errors.New("fail") }
+func (failStore) SearchDomainsByName(pattern string, limit int) ([]domain.Domain, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) SearchDomainsByNS(nsName string, limit int) ([]domain.Domain, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) SearchContactsByName(pattern string, limit int) ([]domain.Contact, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) SearchContactsByHandle(pattern string, limit int) ([]domain.Contact, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) SearchNameserversByName(pattern string, limit int) ([]domain.NameServer, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) SearchNameserversByIP(ip string, limit int) ([]domain.NameServer, error) {
+	return nil, errors.New("fail")
+}
+func (failStore) Ping() error { return nil }
+func (failStore) Close() error { return nil }
+
+func TestSearchErrorPropagation(t *testing.T) {
+	svc := New(failStore{}, config.RDAPConfig{BaseURL: "https://rdap.example.com", Mode: "registrar"})
+	calls := []struct {
+		name string
+		fn   func() error
+	}{
+		{"SearchDomainsByName", func() error { _, err := svc.SearchDomainsByName("x", 10, testReqURL); return err }},
+		{"SearchDomainsByNS", func() error { _, err := svc.SearchDomainsByNS("x", 10, testReqURL); return err }},
+		{"SearchEntitiesByName", func() error { _, err := svc.SearchEntitiesByName("x", 10, testReqURL); return err }},
+		{"SearchEntitiesByHandle", func() error { _, err := svc.SearchEntitiesByHandle("x", 10, testReqURL); return err }},
+		{"SearchNameserversByName", func() error { _, err := svc.SearchNameserversByName("x", 10, testReqURL); return err }},
+		{"SearchNameserversByIP", func() error { _, err := svc.SearchNameserversByIP("x", 10, testReqURL); return err }},
+	}
+	for _, c := range calls {
+		if err := c.fn(); err == nil {
+			t.Errorf("%s: expected error", c.name)
+		}
 	}
 }
