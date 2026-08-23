@@ -81,6 +81,12 @@ jobs:
         env:
           PGPASSWORD: rdap
 
+      - name: Run store integration tests against PostgreSQL
+        run: >
+          go test ./internal/store/ -count=1 -run 'TestPostgres' -v
+        env:
+          RDAP_TEST_DSN: postgres://rdap:rdap@localhost:5432/rdap?sslmode=disable
+
   # Applies migrations/002_mysql_init.sql against a FRESH MySQL 8 instance to catch
   # migration regressions that would only surface on a brand-new deployment.
   migration-mysql:
@@ -120,3 +126,12 @@ jobs:
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='rdap' AND table_name IN ('domains','entities','nameservers','ip_networks','autnums','registry_history');"
           mysql -h 127.0.0.1 -P 3306 -uroot -proot rdap -e \
             "SELECT ldh_name FROM domains WHERE handle='EX1-NAME';"
+
+      - name: Run store integration tests against MySQL
+        run: |
+          set -e
+          # The migration creates the rdap database and user; the store tests
+          # connect as root for simplicity.
+          go test ./internal/store/ -count=1 -run 'TestMySQL' -v
+        env:
+          RDAP_TEST_MYSQL_DSN: root:root@tcp(127.0.0.1:3306)/rdap?parseTime=true&charset=utf8mb4

@@ -447,7 +447,7 @@ func (s *MySQLStore) SearchContactsByName(pattern string, limit int) ([]domain.C
 		LIMIT ?
 	`
 
-	sqlPattern := "%" + pattern + "%"
+	sqlPattern := "%" + patternToSQL(pattern) + "%"
 	rows, err := s.db.QueryContext(context.Background(), query, sqlPattern, sqlPattern, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search entities: %w", err)

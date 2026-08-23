@@ -18,12 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/help` advertises disabled searches** — when `rdap.search_enabled: false` (the
   default), the `/help` response includes a "Search Disabled" notice documenting that
   search queries are unavailable, mirroring how enforced rate limits are advertised.
-- **Major test coverage expansion** — statement coverage raised from ~24% to **82.2%**
-  (with the Postgres integration tests; 70.7% without a DB). Per-package: `config` 100%,
-  `metrics` 100%, `middleware` 99%, `service` 98.7%, `rdap` 97.5%, `auth` 96.7%,
-  `handlers` 87.8%, `server` 84.6%, `store` 72.9%, `cmd/rdapd` 55.8%. Added tests across
-  every layer including comprehensive **Postgres integration tests** (`RDAP_TEST_DSN`)
-  covering all lookups, searches, the transactional aggregate, and the seed fixtures.
+- **Major test coverage expansion** — statement coverage raised from ~24% to **92.9%**
+  (with the PostgreSQL + MySQL integration tests; 70.7% without a DB). Per-package:
+  `config` 100%, `metrics` 100%, `middleware` 99%, `service` 98.7%, `rdap` 97.5%,
+  `auth` 96.7%, `store` 93.1%, `handlers` 87.8%, `server` 84.6%, `cmd/rdapd` 55.8%.
+  Added tests across every layer including comprehensive **PostgreSQL and MySQL
+  integration tests** covering all lookups, searches, the transactional aggregate,
+  IP networks (v4 + v6), autnums, and the seed fixtures. CI now runs the store
+  integration tests against fresh PostgreSQL and MySQL instances.
 
 ### Fixed
 - **`/ip/{network}` CIDR routing** — the route used chi's single-segment `{network}`
@@ -43,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PostgreSQL contact search wildcards** — `SearchContactsByName` didn't translate
   `*`/`?` glob wildcards into SQL `%`/`_` (unlike every other search), so patterns
   like `REG1*` never matched. Now applies `patternToSQL`.
+- **MySQL contact search wildcards** — same fix as PostgreSQL: `SearchContactsByName`
+  now applies `patternToSQL` so `*`/`?` globs match in MySQL `LIKE` queries.
 
 ## [1.2.0] - 2026-08-19
 

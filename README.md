@@ -5,7 +5,7 @@
 [![ICANN Conformance](https://img.shields.io/github/actions/workflow/status/tespio/go-rdap-server/conformance.yml?branch=master&label=ICANN%20RDAPCT%20CI&logo=github)](https://github.com/tespio/go-rdap-server/actions/workflows/conformance.yml)
 [![Release](https://img.shields.io/github/v/release/tespio/go-rdap-server?logo=github)](https://github.com/tespio/go-rdap-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/Coverage-82.2%25-yellow?logo=codecov&logoColor=white)](#testing--coverage)
+[![Coverage](https://img.shields.io/badge/Coverage-92.9%25-brightgreen?logo=codecov&logoColor=white)](#testing--coverage)
 [![RDAPCT: 2024 Registrar - 0 errors](https://img.shields.io/badge/RDAPCT-2024%20Registrar%20%E2%9C%94%200%20errors-brightgreen)](README.md#icann-conformance)
 [![RDAPCT: 2024 Registry - 0 errors*](https://img.shields.io/badge/RDAPCT-2024%20Registry%20%E2%9C%94%200%20errors*%20-blue)](README.md#icann-conformance)
 
@@ -878,8 +878,8 @@ real usage scenarios:
 Tests run in CI on every push/PR (see `.github/workflows/ci.yml`) and a
 `coverage.out` artifact is uploaded to each run for inspection.
 
-Current statement coverage (measured locally with the Postgres integration tests
-running, `make test-cover` with `RDAP_TEST_DSN` set):
+Current statement coverage (measured locally with both the PostgreSQL and MySQL
+integration tests running — `RDAP_TEST_DSN` + `RDAP_TEST_MYSQL_DSN`):
 
 | Package | Coverage |
 |---------|:---:|
@@ -889,23 +889,23 @@ running, `make test-cover` with `RDAP_TEST_DSN` set):
 | `internal/service` | 98.7% |
 | `internal/rdap` | 97.5% |
 | `internal/auth` | 96.7% |
+| `internal/store` | 93.1% |
 | `internal/handlers` | 87.8% |
 | `internal/server` | 84.6% |
-| `internal/store` | 72.9% |
 | `cmd/rdapd` | 55.8% |
-| **Total** | **82.2%** |
+| **Total** | **92.9%** |
 
 The `internal/store` DB-backed methods are covered by integration tests gated
-behind `RDAP_TEST_DSN` (they skip when unset, so CI's no-DB run reports the
-unit-tested parts only). CI runs those against fresh PostgreSQL and MySQL
-instances.
+behind `RDAP_TEST_DSN` (PostgreSQL) and `RDAP_TEST_MYSQL_DSN` (MySQL); they skip
+when unset, so CI's plain run reports the unit-tested parts only. CI runs both
+sets of integration tests against fresh PostgreSQL and MySQL instances.
 
-> The config, metrics, middleware, service, rdap, auth, handler, and server layers
-> all have strong unit coverage — the code most likely to affect conformance and
+> The config, metrics, middleware, service, rdap, auth, handler, server, and store
+> layers all have strong coverage — the code most likely to affect conformance and
 > operator behavior. The project is also validated end-to-end against the ICANN
 > conformance tool in CI (see [ICANN Conformance](#icann-conformance)). The
-> remaining gaps are the TLS/startup paths in `cmd/rdapd` and MySQL-specific DB
-> code (covered by CI integration tests).
+> remaining gaps are the TLS/startup paths in `cmd/rdapd` and a few defensive
+> error branches.
 
 ```bash
 make test          # go test -v -race ./...
