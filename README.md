@@ -164,8 +164,8 @@ rdap:
   # disabled they return HTTP 501 Not Implemented. Set true only if needed.
   search_enabled: false
   port43_whois: "whois.example.com"
-  server_name: "RDAP Server v1.2"
-  version: "1.2.0"
+  server_name: "RDAP Server v1.2.1"
+  version: "1.2.1"
   # Customize the Terms of Service notice (card + link) in responses.
   # Set the URL to your real terms page, like a registrar's agreement.
   tos:

@@ -57,8 +57,8 @@ rdap:
   # Set to true only if you truly need to support searches.
   search_enabled: false
   port43_whois: "whois.example.com"
-  server_name: "RDAP Server v1.1"
-  version: "1.2.0"
+  server_name: "RDAP Server v1.2.1"
+  version: "1.2.1"
   # Customize the Terms of Service notice (card + link) shown in responses.
   # When omitted, a generic notice pointing at /help is used. Set the URL to your
   # actual terms page, like a registrar's registration agreement.

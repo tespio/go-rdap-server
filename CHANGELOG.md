@@ -5,9 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.1] - 2026-08-23
 
 ### Added
+- **Client-side RDAP lookup page** — a dependency-free, single-file browser UI at
+  `web/index.html` ("whois, modern"): auto-detecting lookups for domains, nameservers,
+  entities, IP networks (v4 + v6), and ASNs; IANA bootstrap resolution (RFC 7484) to
+  find the authoritative server; clean jCard/vcard rendering; and a raw-JSON view.
+  Works against this server out of the box (CORS is enabled by default).
 - **`rdap.search_enabled` config flag** — controls the RFC 7482 search endpoints
   (`/domains?name=*`, `/entities?fn=*`, `/nameservers?name=*`). **Disabled by default**:
   wildcard searches are an abuse/DoS vector and most registrars/registries don't offer
@@ -26,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   integration tests** covering all lookups, searches, the transactional aggregate,
   IP networks (v4 + v6), autnums, and the seed fixtures. CI now runs the store
   integration tests against fresh PostgreSQL and MySQL instances.
+- **Dependency refresh** — all modules bumped to patched versions (x/crypto v0.55,
+  x/net v0.58, pgx/v5 v5.10, chi v5.3, prometheus client_golang v1.24, mysql v1.10,
+  edwards25519 v1.2, …) fixing 25 Dependabot alerts. Module now requires Go 1.25.
 
 ### Fixed
 - **`/ip/{network}` CIDR routing** — the route used chi's single-segment `{network}`
@@ -132,7 +140,8 @@ Initial release.
 - Docker + docker-compose, Makefile, CI (build/vet/test).
 - Example databases and schemas under `examples/`.
 
-[Unreleased]: https://github.com/tespio/go-rdap-server/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/tespio/go-rdap-server/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/tespio/go-rdap-server/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/tespio/go-rdap-server/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tespio/go-rdap-server/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tespio/go-rdap-server/releases/tag/v1.0.0
