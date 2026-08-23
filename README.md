@@ -489,7 +489,12 @@ Implementation: `internal/store/mysql.go` (uses `database/sql` + `go-sql-driver/
 ## Web UI (client-side RDAP lookup)
 
 A dependency-free, single-file browser client lives at
-[`web/index.html`](web/index.html) — a modern "whois" page for RDAP:
+[`web/index.html`](web/index.html) — a modern "whois" page for RDAP.
+**Live demo hosted on GitHub Pages: <https://tespio.github.io/go-rdap-server/>**
+(published automatically by the `Deploy to GitHub Pages` workflow whenever
+`web/` changes).
+
+The page offers:
 
 - **Lookups** for domains, nameservers, entities, IP networks (v4 + v6), and ASNs,
   with automatic type detection.
