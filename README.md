@@ -50,6 +50,7 @@ service without the operational overhead.
 - **Dual storage backends** — in-memory (development), PostgreSQL, and MySQL (production).
 - **Rate limiting** — per-IP, configurable window and burst, with trusted-proxy client-IP resolution (spoof-proof).
 - **Optional authentication** — OAuth 2.0 / OpenID Connect bearer tokens (JWT access tokens, signature-verified via JWKS; RFC 9560 `farv1`).
+- **Legacy WHOIS gateway** — optional port 43 server (RFC 3912) that answers plain-text WHOIS queries rendered from the same registry data, so one binary replaces both your WHOIS and RDAP services.
 - **Prometheus metrics** — built-in `/metrics`-style endpoint.
 - **CORS + security headers** — ready for browser clients.
 - **HTTPS/TLS** — native TLS termination or reverse-proxy termination
@@ -65,6 +66,7 @@ service without the operational overhead.
 - [RDAP Extensions](#rdap-extensions)
 - [Example Responses](#example-responses)
 - [Storage](#storage)
+- [WHOIS Gateway](#whois-gateway)
 - [Examples](#examples)
 - [Web UI (client-side RDAP lookup)](#web-ui-client-side-rdap-lookup)
 - [ICANN Conformance](#icann-conformance)
@@ -233,6 +235,8 @@ rate_limiting:
 | `metrics.enabled` | `true` | Enable the Prometheus metrics endpoint |
 | `rate_limiting.enabled` | `true` | Enable per-IP rate limiting |
 | `rate_limiting.trusted_ips` | *(empty)* | Addresses/CIDRs allowed to set `X-Forwarded-For`/`X-Real-IP` (your proxies). All other peers are limited by their real socket IP. |
+| `whois.enabled` | `false` | Enable the legacy port 43 WHOIS gateway (RFC 3912), rendering WHOIS text from the same registry data |
+| `whois.port` | `43` | WHOIS listener port (binds the same host as `server.host`) |
 
 ## API Endpoints
 
@@ -619,6 +623,38 @@ python3 -m http.server 8000 --directory web
 
 The page defaults to `http://localhost:8443`; change the server field in the
 page (it remembers your choice) or drop the file behind any static host.
+
+## WHOIS Gateway
+
+The server can also answer **legacy WHOIS queries** (RFC 3912) on port 43,
+rendering plain-text WHOIS output from the **same registry data** the RDAP
+endpoints serve. This lets one binary replace both your WHOIS and RDAP servers
+during the RDAP migration — no separate WHOIS daemon, and no duplicated data.
+
+```yaml
+whois:
+  enabled: true
+  port: 43
+```
+
+The WHOIS listener binds the same host as `server.host` (default all
+interfaces). Supported queries:
+
+```text
+whois example.com            # or:  domain example.com
+-> RFC 3912-style WHOIS text (registrant, contacts, nameservers, dates, DNSSEC)
+
+whois nope.invalid
+-> NOT FOUND
+
+whois ns1.example.com        # ns/entity/ip/asn queries
+-> explanation pointing at the RDAP service (only domains are rendered today)
+```
+
+The gateway is designed to be a **drop-in** for `whois` command-line clients,
+registrar tooling, and monitoring that still speak port 43. It supports the
+keyword forms (`domain`, `nameserver`, `entity`, `ip`, `asn`) and auto-detects
+bare tokens.
 
 ## Examples
 

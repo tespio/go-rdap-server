@@ -148,3 +148,18 @@ rate_limiting:
     - "10.0.0.0/8"
     - "172.16.0.0/12"
     - "192.168.0.0/16"
+
+# Legacy WHOIS gateway (RFC 3912). When enabled, the same binary also answers
+# plain-text WHOIS queries on the WHOIS port, rendered from the same registry
+# data the RDAP endpoints serve — so one process can replace both your WHOIS and
+# RDAP servers during the RDAP migration.
+#
+#   whois example.com            -> domain WHOIS text
+#   domain example.com           -> domain WHOIS text (keyword form)
+#   nope.invalid                 -> "NOT FOUND"
+#   ns/entity/ip/asn queries     -> explanation pointing at the RDAP service
+#
+# The WHOIS listener binds the same host as `server.host`.
+whois:
+  enabled: false
+  port: 43

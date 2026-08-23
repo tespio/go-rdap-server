@@ -15,6 +15,7 @@ type Config struct {
 	Auth    AuthConfig    `yaml:"auth"`
 	Metrics MetricsConfig `yaml:"metrics"`
 	Rate    RateConfig    `yaml:"rate_limiting"`
+	Whois   WhoisConfig   `yaml:"whois"`
 }
 
 type ServerConfig struct {
@@ -151,6 +152,17 @@ type RateConfig struct {
 	TrustedIPs []string      `yaml:"trusted_ips"`
 }
 
+// WhoisConfig configures the legacy port 43 WHOIS gateway (RFC 3912). When
+// enabled, the server also answers plain-text WHOIS queries from the same
+// registry data, letting one binary replace both the RDAP and WHOIS services
+// during the RDAP migration.
+type WhoisConfig struct {
+	// Enabled turns on the WHOIS listener. Disabled by default.
+	Enabled bool `yaml:"enabled"`
+	// Port is the WHOIS listener port (43 is the IANA-assigned port).
+	Port int `yaml:"port"`
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -184,6 +196,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.MaxHeaderBytes == 0 {
 		c.Server.MaxHeaderBytes = 1 << 20
+	}
+	if c.Whois.Port == 0 {
+		c.Whois.Port = 43
 	}
 	if c.RDAP.MaxDomainLen == 0 {
 		c.RDAP.MaxDomainLen = 253
@@ -266,4 +281,13 @@ func (c *Config) Addr() string {
 
 func (c *MetricsConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// Addr returns the listen address for the WHOIS gateway (host from server
+// config, port from whois config).
+func (c *Config) WhoisAddr() string {
+	if c.Server.Host == "" || c.Server.Host == "0.0.0.0" {
+		return fmt.Sprintf(":%d", c.Whois.Port)
+	}
+	return fmt.Sprintf("%s:%d", c.Server.Host, c.Whois.Port)
 }

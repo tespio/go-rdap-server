@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.1] - 2026-08-23
 
 ### Added
+- **Legacy WHOIS gateway (RFC 3912)** — optional `whois.enabled: true` port 43
+  server that answers plain-text WHOIS queries rendered from the **same registry
+  data** the RDAP endpoints serve, so one binary replaces both the WHOIS and RDAP
+  services during the RDAP migration. Supports bare and keyword query forms
+  (`domain example.com`, `ns ...`, `entity ...`, `ip ...`, `asn ...`); domains are
+  rendered today, other object types return an explanation pointing at the RDAP
+  service, and unknown objects return `NOT FOUND`. New `whois.enabled` /
+  `whois.port` config keys (default port 43).
 - **OAuth 2.0 / OpenID Connect authentication (RFC 9560 `farv1`)** — the auth
   middleware now **verifies the JWT access-token signature** against the
   authorization server's JWKS (RS256/384/512, ES256/384/512, PS256/384/512) in

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"github.com/tespio/go-rdap-server/internal/metrics"
 	"github.com/tespio/go-rdap-server/internal/server"
 	"github.com/tespio/go-rdap-server/internal/store"
+	"github.com/tespio/go-rdap-server/internal/whois"
 	"go.uber.org/zap"
 )
 
@@ -36,6 +38,9 @@ func main() {
 // received, then shuts everything down gracefully. It is separated from main so
 // the startup/shutdown logic is unit-testable.
 func run(configPath string, logger *zap.Logger, quit <-chan os.Signal) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -53,6 +58,19 @@ func run(configPath string, logger *zap.Logger, quit <-chan os.Signal) error {
 			logger.Info("metrics server starting", zap.String("addr", metricsSrv.Addr))
 			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				logger.Error("metrics server error", zap.Error(err))
+			}
+		}()
+	}
+
+	// Legacy WHOIS gateway (RFC 3912). When enabled, serves plain-text WHOIS
+	// responses rendered from the same registry data, so one binary can replace
+	// both the RDAP and WHOIS services during the migration.
+	var whoisSrv *whois.Server
+	if cfg.Whois.Enabled {
+		whoisSrv = whois.New(cfg.WhoisAddr(), whois.StoreLookup(st), logger)
+		go func() {
+			if err := whoisSrv.Serve(ctx); err != nil && err != net.ErrClosed {
+				logger.Error("whois server error", zap.Error(err))
 			}
 		}()
 	}
@@ -79,17 +97,23 @@ func run(configPath string, logger *zap.Logger, quit <-chan os.Signal) error {
 	}()
 
 	<-quit
+	cancel() // stop the WHOIS gateway listener
 	logger.Info("shutting down servers...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 	if metricsSrv != nil {
-		if err := metricsSrv.Shutdown(ctx); err != nil {
+		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
 			logger.Error("metrics server forced to shutdown", zap.Error(err))
+		}
+	}
+	if whoisSrv != nil {
+		if err := whoisSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("whois server forced to shutdown", zap.Error(err))
 		}
 	}
 

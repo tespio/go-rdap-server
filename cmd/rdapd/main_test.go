@@ -1,8 +1,10 @@
 package main
 
 import (
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +80,64 @@ rate_limiting:
 	time.Sleep(500 * time.Millisecond)
 	quit <- os.Interrupt
 
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not shut down in time")
+	}
+}
+
+func TestRunWithWhoisGateway(t *testing.T) {
+	// Enabling the WHOIS gateway must not break startup/shutdown, and the
+	// gateway must answer a real WHOIS query.
+	p := writeConfig(t, `
+server:
+  host: "127.0.0.1"
+  port: 0
+rdap:
+  mode: "registrar"
+  base_url: "https://rdap.example.com"
+storage:
+  driver: "memory"
+metrics:
+  enabled: false
+rate_limiting:
+  enabled: false
+whois:
+  enabled: true
+  port: 14343
+`)
+	quit := make(chan os.Signal, 1)
+	done := make(chan error, 1)
+	go func() { done <- run(p, zap.NewNop(), quit) }()
+
+	// Wait for the WHOIS listener, then run a real query.
+	var ok bool
+	for i := 0; i < 20; i++ {
+		conn, err := net.Dial("tcp", "127.0.0.1:14343")
+		if err == nil {
+			conn.SetDeadline(time.Now().Add(2 * time.Second))
+			conn.Write([]byte("example.com\r\n"))
+			buf := make([]byte, 1024)
+			n, _ := conn.Read(buf)
+			conn.Close()
+			if n > 0 && strings.Contains(string(buf[:n]), "Domain Name: example.com") {
+				ok = true
+			}
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !ok {
+		quit <- os.Interrupt
+		<-done
+		t.Fatal("WHOIS gateway did not answer a domain query")
+	}
+
+	quit <- os.Interrupt
 	select {
 	case err := <-done:
 		if err != nil {
