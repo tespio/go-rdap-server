@@ -37,8 +37,8 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Head("/entity/{handle}", h.LookupEntity)
 	r.Get("/nameserver/{name}", h.LookupNameserver)
 	r.Head("/nameserver/{name}", h.LookupNameserver)
-	r.Get("/ip/{network}", h.LookupIPNetwork)
-	r.Head("/ip/{network}", h.LookupIPNetwork)
+	r.Get("/ip/*", h.LookupIPNetwork)
+	r.Head("/ip/*", h.LookupIPNetwork)
 	r.Get("/autnum/{asn}", h.LookupAutnum)
 	r.Head("/autnum/{asn}", h.LookupAutnum)
 
@@ -169,7 +169,9 @@ func (h *Handler) LookupNameserver(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) LookupIPNetwork(w http.ResponseWriter, r *http.Request) {
-	network := chi.URLParam(r, "network")
+	// /ip/* uses chi's wildcard so a CIDR ("8.8.8.0/24", contains a slash)
+	// is captured in full rather than being split across path segments.
+	network := chi.URLParam(r, "*")
 	if network == "" {
 		writeError(w, http.StatusBadRequest, 400, "Invalid network", "Network parameter is required")
 		return

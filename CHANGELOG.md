@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/help` advertises disabled searches** — when `rdap.search_enabled: false` (the
   default), the `/help` response includes a "Search Disabled" notice documenting that
   search queries are unavailable, mirroring how enforced rate limits are advertised.
+- **Major test coverage expansion** — statement coverage raised from ~24% to **50.2%**:
+  `config` 100%, `service` 94.6%, `handlers` 62.8%, `store` 33.9% (unit-testable parts).
+  Added tests for store JSON mapping + in-memory store, service lookup/search wrappers,
+  HTTP lookup handlers, `/help`, and config load/validate/defaults.
+
+### Fixed
+- **`/ip/{network}` CIDR routing** — the route used chi's single-segment `{network}`
+  param, so `/ip/8.8.8.0/24` (CIDR contains a slash) returned 404. Now uses `/ip/*`
+  with the full captured path, so CIDR lookups work as documented.
 
 ## [1.2.0] - 2026-08-19
 
