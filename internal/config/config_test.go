@@ -83,6 +83,7 @@ auth:
   jwks_endpoint: "https://auth.example.com/jwks"
   issuer: "https://auth.example.com"
   audience: "rdap.example.com"
+  algorithms: ["RS256", "ES256"]
 rate_limiting:
   enabled: true
   requests: 500
@@ -109,6 +110,9 @@ rate_limiting:
 	}
 	if cfg.Auth.Enabled != true || cfg.Auth.Issuer != "https://auth.example.com" {
 		t.Errorf("auth = %+v", cfg.Auth)
+	}
+	if len(cfg.Auth.Algorithms) != 2 || cfg.Auth.Algorithms[0] != "RS256" || cfg.Auth.Algorithms[1] != "ES256" {
+		t.Errorf("auth.algorithms = %v", cfg.Auth.Algorithms)
 	}
 	if !cfg.Rate.Enabled || cfg.Rate.Requests != 500 || cfg.Rate.Window != 30*time.Second || cfg.Rate.Burst != 100 {
 		t.Errorf("rate = %+v", cfg.Rate)

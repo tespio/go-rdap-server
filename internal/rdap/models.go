@@ -188,6 +188,30 @@ type Help struct {
 	// ReverseSearchProperties advertises the reverse searches the server
 	// supports (RFC 9536). Emitted when the reverse_search extension is enabled.
 	ReverseSearchProperties []ReverseSearchProperty `json:"reverse_search_properties,omitempty"`
+	// FARV1OpenIDCConfiguration advertises OAuth 2.0 / OpenID Connect support
+	// (RFC 9560 §4.1). Emitted when authentication is enabled.
+	FARV1OpenIDCConfiguration *FARV1OpenIDCConfiguration `json:"farv1_openidcConfiguration,omitempty"`
+}
+
+// FARV1OpenIDCConfiguration is the RFC 9560 §4.1 data structure describing the
+// RDAP server's OAuth 2.0 / OpenID Connect capabilities.
+type FARV1OpenIDCConfiguration struct {
+	SessionClientSupported        bool `json:"sessionClientSupported"`
+	TokenClientSupported          bool `json:"tokenClientSupported"`
+	DntSupported                  bool `json:"dntSupported"`
+	ProviderDiscoverySupported    bool `json:"providerDiscoverySupported,omitempty"`
+	IssuerIdentifierSupported     bool `json:"issuerIdentifierSupported,omitempty"`
+	ImplicitTokenRefreshSupported bool `json:"implicitTokenRefreshSupported,omitempty"`
+	// OpenIDCProviders lists the supported OPs. For a server that trusts a
+	// single configured issuer this is populated from config.
+	OpenIDCProviders []FARV1Provider `json:"openidcProviders,omitempty"`
+}
+
+// FARV1Provider describes one supported OpenID provider (RFC 9560 §4.1).
+type FARV1Provider struct {
+	Iss     string `json:"iss"`
+	Name    string `json:"name"`
+	Default bool   `json:"default,omitempty"`
 }
 
 // ReverseSearchProperty describes one supported reverse search (RFC 9536 §4).

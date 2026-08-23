@@ -33,10 +33,92 @@ func newTestHandlerCfg(t *testing.T, cfg config.RDAPConfig) http.Handler {
 		t.Fatalf("memory store: %v", err)
 	}
 	svc := service.New(st, cfg)
-	h := New(svc, cfg, config.RateConfig{}, 8443)
+	h := New(svc, cfg, config.RateConfig{}, config.AuthConfig{}, 8443)
 	r := chi.NewRouter()
 	h.RegisterRoutes(r)
 	return r
+}
+
+func newTestHandlerAuth(t *testing.T, cfg config.RDAPConfig, authCfg config.AuthConfig) http.Handler {
+	t.Helper()
+	st, err := store.NewMemoryStore(config.StorageConfig{})
+	if err != nil {
+		t.Fatalf("memory store: %v", err)
+	}
+	svc := service.New(st, cfg)
+	h := New(svc, cfg, config.RateConfig{}, authCfg, 8443)
+	r := chi.NewRouter()
+	h.RegisterRoutes(r)
+	return r
+}
+
+func TestHelpFARV1WhenAuthEnabled(t *testing.T) {
+	cfg := config.RDAPConfig{
+		BaseURL:          "https://rdap.example.com",
+		RegistrarBaseURL: "https://rdap.example.org/rdap/",
+		Mode:             "registrar",
+		MaxSearchLimit:   100,
+		SearchEnabled:    false,
+	}
+	authCfg := config.AuthConfig{
+		Enabled:  true,
+		Issuer:   "https://auth.example.com",
+		Audience: "rdap.example.com",
+	}
+	router := newTestHandlerAuth(t, cfg, authCfg)
+
+	rec := doRequest(t, router, http.MethodGet, "/help")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var help rdap.Help
+	if err := json.Unmarshal(rec.Body.Bytes(), &help); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// farv1 in conformance.
+	hasFarv1 := false
+	for _, c := range help.Conformance.Conformance {
+		if c == "farv1" {
+			hasFarv1 = true
+		}
+	}
+	if !hasFarv1 {
+		t.Errorf("conformance missing farv1: %v", help.Conformance.Conformance)
+	}
+	// farv1_openidcConfiguration present with token client support.
+	if help.FARV1OpenIDCConfiguration == nil {
+		t.Fatal("expected farv1_openidcConfiguration")
+	}
+	if !help.FARV1OpenIDCConfiguration.TokenClientSupported {
+		t.Error("tokenClientSupported should be true")
+	}
+	if help.FARV1OpenIDCConfiguration.SessionClientSupported {
+		t.Error("sessionClientSupported should be false (token-oriented only)")
+	}
+	if len(help.FARV1OpenIDCConfiguration.OpenIDCProviders) != 1 ||
+		help.FARV1OpenIDCConfiguration.OpenIDCProviders[0].Iss != "https://auth.example.com" {
+		t.Errorf("providers = %+v", help.FARV1OpenIDCConfiguration.OpenIDCProviders)
+	}
+}
+
+func TestHelpNoFARV1WhenAuthDisabled(t *testing.T) {
+	router := newTestHandler(t, false)
+	rec := doRequest(t, router, http.MethodGet, "/help")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var help rdap.Help
+	if err := json.Unmarshal(rec.Body.Bytes(), &help); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if help.FARV1OpenIDCConfiguration != nil {
+		t.Error("expected no farv1_openidcConfiguration when auth disabled")
+	}
+	for _, c := range help.Conformance.Conformance {
+		if c == "farv1" {
+			t.Error("unexpected farv1 conformance when auth disabled")
+		}
+	}
 }
 
 func TestSearchEnabledReturnsResults(t *testing.T) {
@@ -391,7 +473,7 @@ func TestRequestURLSchemes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			hh := New(svc, cfg, config.RateConfig{}, tc.port)
+			hh := New(svc, cfg, config.RateConfig{}, config.AuthConfig{}, tc.port)
 			req := httptest.NewRequest(http.MethodGet, "/domain/example.com", nil)
 			req.Host = tc.host
 			if tc.tls {
@@ -421,7 +503,7 @@ func TestHelpHandlerRateLimited(t *testing.T) {
 	}
 	rate := config.RateConfig{Enabled: true, Requests: 100, Window: 60 * 1e9, Burst: 50}
 	svc := service.New(st, cfg)
-	h := New(svc, cfg, rate, 8443)
+	h := New(svc, cfg, rate, config.AuthConfig{}, 8443)
 	r := chi.NewRouter()
 	h.RegisterRoutes(r)
 

@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.1] - 2026-08-23
 
 ### Added
+- **OAuth 2.0 / OpenID Connect authentication (RFC 9560 `farv1`)** — the auth
+  middleware now **verifies the JWT access-token signature** against the
+  authorization server's JWKS (RS256/384/512, ES256/384/512, PS256/384/512) in
+  addition to validating `iss`/`aud`/`exp`/`iat`. Previously only claims were
+  checked, so a forged token with the right issuer/audience would be accepted.
+  New `auth.algorithms` restricts accepted algorithms; `jwks_endpoint` defaults
+  to `<issuer>/.well-known/jwks.json`. On failure the server returns `401` with a
+  `WWW-Authenticate: Bearer` challenge (RFC 6750). When auth is enabled, `/help`
+  advertises `farv1_openidcConfiguration` + `farv1` conformance (token-oriented
+  clients), and the RFC 9560 `rdap_allowed_purposes` / `rdap_dnt_allowed` claims
+  are parsed.
 - **Optional IANA RDAP extensions via `rdap.extensions`** — config-gated "extras"
   that append their extension identifier to `rdapConformance` and emit the
   extension's JSON members:

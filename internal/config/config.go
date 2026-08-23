@@ -131,6 +131,10 @@ type AuthConfig struct {
 	JWKSEndpoint string `yaml:"jwks_endpoint"`
 	Issuer       string `yaml:"issuer"`
 	Audience     string `yaml:"audience"`
+	// Algorithms optionally restricts the JWT signature algorithms accepted.
+	// Supported values: RS256/384/512, ES256/384/512, PS256/384/512. When empty
+	// (default) all of those are accepted.
+	Algorithms []string `yaml:"algorithms"`
 }
 
 type MetricsConfig struct {

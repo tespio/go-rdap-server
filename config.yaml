@@ -110,11 +110,23 @@ rdap:
       url: "https://rdap.example.com/privacy"
       rel: "privacy-policy"
 
+# OAuth 2.0 / OpenID Connect bearer-token authentication (RFC 9560 "farv1").
+# When enabled, every request must carry `Authorization: Bearer <token>` and the
+# token's SIGNATURE is verified against the authorization server's JWKS (in
+# addition to issuer/audience/expiry claims). Enable `farv1` in rdap.extensions
+# (or just set enabled: true) to advertise support in /help.
 auth:
   enabled: false
+  # JWKS endpoint of the authorization server (OAuth 2.0 / OIDC resource server).
+  # If empty, defaults to <issuer>/.well-known/jwks.json.
   jwks_endpoint: "https://auth.example.com/.well-known/jwks.json"
+  # Issuer Identifier the token's "iss" claim must match (empty = skip check).
   issuer: "https://auth.example.com"
+  # Audience the token's "aud" claim must contain (empty = skip check).
   audience: "rdap.example.com"
+  # Optional: restrict accepted JWT signature algorithms.
+  # Supported: RS256/384/512, ES256/384/512, PS256/384/512. Empty = accept all.
+  # algorithms: ["RS256", "ES256"]
 
 metrics:
   enabled: true

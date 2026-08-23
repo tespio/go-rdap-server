@@ -49,7 +49,7 @@ service without the operational overhead.
 - **jCard vCards** — RFC 6350/7095 JSON vCard contact data for entities.
 - **Dual storage backends** — in-memory (development), PostgreSQL, and MySQL (production).
 - **Rate limiting** — per-IP, configurable window and burst, with trusted-proxy client-IP resolution (spoof-proof).
-- **Optional authentication** — JWT/Bearer token via JWKS.
+- **Optional authentication** — OAuth 2.0 / OpenID Connect bearer tokens (JWT access tokens, signature-verified via JWKS; RFC 9560 `farv1`).
 - **Prometheus metrics** — built-in `/metrics`-style endpoint.
 - **CORS + security headers** — ready for browser clients.
 - **HTTPS/TLS** — native TLS termination or reverse-proxy termination
@@ -229,7 +229,7 @@ rate_limiting:
 | `rdap.tos.description` | *(generic)* | Body text of the ToS notice (company name, terms) |
 | `rdap.tos.url` | `{base_url}/help` | ToS link target (`rel: terms-of-service`) |
 | `rdap.custom_notices` | *(none)* | List of `{title, description, url, rel}` registrar-specific notices appended to responses |
-| `auth.enabled` | `false` | Enable JWT authentication |
+| `auth.enabled` | `false` | Enable OAuth 2.0 / OpenID Connect bearer-token authentication (JWT via JWKS, RFC 9560 `farv1`) |
 | `metrics.enabled` | `true` | Enable the Prometheus metrics endpoint |
 | `rate_limiting.enabled` | `true` | Enable per-IP rate limiting |
 | `rate_limiting.trusted_ips` | *(empty)* | Addresses/CIDRs allowed to set `X-Forwarded-For`/`X-Real-IP` (your proxies). All other peers are limited by their real socket IP. |
@@ -303,6 +303,7 @@ emits the extension's JSON members where applicable.
 > | `cidr0` (NRO) | ✅ 78 groups / 0 errors |
 > | `reverse_search` (RFC 9536) | ✅ 78 groups / 0 errors |
 > | `ttl0` (IETF draft) | ❌ **4 errors** (`-12208`): rdapct rejects the `ttl0_data` member on nameservers because it is a draft, not a published RFC, and isn't in rdapct's allowed-members schema |
+> | `farv1` (RFC 9560) | n/a — enabled via `auth.enabled`, not `rdap.extensions`; advertised in `/help` when authentication is on. Conformance runs use auth off |
 >
 > All extensions default to **OFF**, so the ICANN conformance array is unchanged
 > (78 groups / 0 errors) unless you explicitly opt in. CI's conformance job keeps
@@ -885,10 +886,37 @@ Internet client from spoofing its IP via headers to bypass per-IP limits.
 - The nginx example below forwards `X-Forwarded-For`, so make sure the nginx
   host's IP (or the subnet it sits in) is in `trusted_ips`.
 
-### Authentication (optional)
+### Authentication (optional) — OAuth 2.0 / OpenID Connect
 
-Set `auth.enabled: true` and configure `jwks_endpoint`/`issuer`/`audience` to require
-a valid JWT (Bearer token) on every request. Disabled by default.
+Set `auth.enabled: true` and configure `jwks_endpoint`/`issuer`/`audience` to
+require a valid OAuth 2.0 access token (JWT, RFC 7519) on every request. Disabled
+by default.
+
+Unlike a claim-only check, the server **verifies the token signature** against
+the authorization server's JSON Web Key Set (JWKS, RFC 7517), so a forged token
+is rejected even if it carries the correct issuer/audience. Supported signature
+algorithms: **RS256/384/512, ES256/384/512, PS256/384/512** (restrict with
+`auth.algorithms`). Standard claims validated: `iss` (must match `auth.issuer`),
+`aud` (must contain `auth.audience`), `exp`, `iat`.
+
+```yaml
+auth:
+  enabled: true
+  jwks_endpoint: "https://auth.example.com/.well-known/jwks.json"  # or empty to use <issuer>/.well-known/jwks.json
+  issuer: "https://auth.example.com"        # token "iss" must match
+  audience: "rdap.example.com"              # token "aud" must contain
+  # algorithms: ["RS256", "ES256"]          # optional restriction
+```
+
+Clients send `Authorization: Bearer <access_token>` (RFC 6750). On failure the
+server returns `401` with an RDAP error object and a `WWW-Authenticate: Bearer`
+challenge.
+
+**`farv1` (RFC 9560):** when auth is enabled, the `/help` response includes the
+`farv1_openidcConfiguration` data structure and `farv1` in `rdapConformance`,
+signaling OAuth 2.0 / OpenID Connect support (token-oriented clients). The
+RDAP-specific claims `rdap_allowed_purposes` and `rdap_dnt_allowed` are parsed
+and exposed on the authenticated claims when present.
 
 ## RFC 9537 Redaction (2024 Profile)
 

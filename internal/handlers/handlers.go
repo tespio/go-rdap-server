@@ -22,10 +22,11 @@ type Handler struct {
 	cfg  config.RDAPConfig
 	port int
 	rate config.RateConfig
+	auth config.AuthConfig
 }
 
-func New(svc *service.Service, cfg config.RDAPConfig, rate config.RateConfig, serverPort int) *Handler {
-	return &Handler{svc: svc, cfg: cfg, port: serverPort, rate: rate}
+func New(svc *service.Service, cfg config.RDAPConfig, rate config.RateConfig, authCfg config.AuthConfig, serverPort int) *Handler {
+	return &Handler{svc: svc, cfg: cfg, port: serverPort, rate: rate, auth: authCfg}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -96,6 +97,19 @@ func (h *Handler) noticeOpts() *rdap.NoticeOptions {
 	return service.NoticeOptionsFromConfig(h.cfg)
 }
 
+// farv1Providers builds the RFC 9560 §4.1 provider list from the configured
+// issuer (the single trusted OpenID provider this server validates tokens from).
+func farv1Providers(authCfg config.AuthConfig) []rdap.FARV1Provider {
+	if authCfg.Issuer == "" {
+		return nil
+	}
+	return []rdap.FARV1Provider{{
+		Iss:     authCfg.Issuer,
+		Name:    authCfg.Issuer,
+		Default: true,
+	}}
+}
+
 func (h *Handler) Help(w http.ResponseWriter, r *http.Request) {
 	rateInfo := rdap.RateLimitInfo{}
 	if h.rate.Enabled {
@@ -111,6 +125,19 @@ func (h *Handler) Help(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.ExtensionsEnabled("reverse_search") {
 		help.ReverseSearchProperties = h.svc.ReverseSearchProperties()
 		help.Conformance = rdap.WithExtensions(help.Conformance, "reverse_search")
+	}
+	// farv1 (RFC 9560): advertise OAuth 2.0 / OpenID Connect when authentication
+	// is enabled. Token-oriented client support is what this server implements.
+	if h.auth.Enabled {
+		help.FARV1OpenIDCConfiguration = &rdap.FARV1OpenIDCConfiguration{
+			SessionClientSupported:     false,
+			TokenClientSupported:       true,
+			DntSupported:               false,
+			ProviderDiscoverySupported: false,
+			IssuerIdentifierSupported:  h.auth.Issuer != "",
+			OpenIDCProviders:           farv1Providers(h.auth),
+		}
+		help.Conformance = rdap.WithExtensions(help.Conformance, "farv1")
 	}
 	writeJSON(w, http.StatusOK, help)
 }
