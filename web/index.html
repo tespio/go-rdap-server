@@ -159,6 +159,36 @@
   footer { color: var(--muted); font-size: 12px; padding: 18px 24px 40px; border-top: 1px solid var(--border); }
   footer a { color: var(--accent); }
   .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  /* Conformance panel */
+  .conf-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .conf-head h2 { margin: 0; font-size: 16px; }
+  .conf-head .conf-target { display: flex; align-items: center; gap: 6px; }
+  .conf-head input[type=text] { width: 200px; background: var(--bg-soft); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  .conf-head input[type=text]:focus { border-color: var(--accent); }
+  .conf-actions { margin: 12px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .conf-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 18px; }
+  .conf-group { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  .conf-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .conf-check input { margin-top: 3px; accent-color: var(--accent); }
+  .conf-check .code { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .conf-check label { cursor: pointer; }
+
+  .conf-result { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 6px; margin: 3px 0; font-size: 13px; }
+  .conf-result .code { font-family: var(--mono); font-size: 12px; min-width: 62px; }
+  .conf-result .title { flex: 1; min-width: 200px; }
+  .conf-result.ok .title { color: var(--text); }
+  .conf-result.ok { background: rgba(52,211,153,.08); }
+  .conf-result.fail { background: rgba(248,113,113,.08); }
+  .conf-result.na { background: rgba(147,160,184,.06); color: var(--muted); }
+  .conf-result .mark { font-weight: 700; min-width: 34px; }
+  .conf-result.ok .mark { color: var(--good); }
+  .conf-result.fail .mark { color: var(--bad); }
+  .conf-result .detail { color: var(--muted); word-break: break-word; }
+  .conf-summary { font-size: 13px; margin: 10px 0; }
+  .conf-summary b.ok { color: var(--good); }
+  .conf-summary b.fail { color: var(--bad); }
+  .conf-summary b.na { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -193,6 +223,34 @@
 
 <main class="wrap">
   <div id="results"><div class="empty">Enter a domain, nameserver, entity handle, IP/CIDR, or ASN to look it up.</div></div>
+
+  <div class="panel" id="conformancePanel">
+    <div class="conf-head">
+      <h2>ICANN Conformance (rdapct subset)</h2>
+      <span class="note">Client-side re-implementation of the most common ICANN RDAP conformance checks (STD 95 + 2024 Response Profile). Runs against the server URL above.</span>
+    </div>
+    <div class="conf-actions">
+      <div class="conf-target">
+        <label>Domain</label>
+        <input type="text" id="confDomain" value="example.com" placeholder="example.com">
+      </div>
+      <div class="conf-target">
+        <label>Mode</label>
+        <select id="confMode">
+          <option value="registrar">registrar</option>
+          <option value="registry">registry</option>
+        </select>
+      </div>
+      <div class="conf-target" style="flex:1; min-width:280px;">
+        <label>Registrar base URL (<code>-47701</code>)</label>
+        <input type="text" id="confRegBase" placeholder="https://rdap.example.org/rdap/">
+      </div>
+      <button type="button" class="primary" id="confRun">Run selected checks</button>
+      <label><input type="checkbox" id="confAll" checked> Select all</label>
+    </div>
+    <div id="confChecks"></div>
+    <div id="confResults"><div class="empty">Select checks and press “Run selected checks”.</div></div>
+  </div>
 </main>
 
 <footer class="wrap">
@@ -730,6 +788,367 @@ try {
 $("server").addEventListener("change", () => {
   try { localStorage.setItem("rdap-server", $("server").value); } catch (e) {}
 });
+
+// ---------------------------------------------------------------------------
+// ICANN Conformance (client-side subset of rdapct)
+// ---------------------------------------------------------------------------
+// Each check returns { status: "pass"|"fail"|"na", detail: "..." }.
+// ctx = { base, domain, mode, regBase, obj, headers }
+const CONFORMANCE_GROUPS = [
+  "STD 95 (RFC 9082/9083)",
+  "2024 Response Profile",
+  "Registrar mode",
+  "TIG (Technical)",
+];
+
+const CONFORMANCE_CHECKS = [
+  // --- STD 95 ---
+  {
+    code: "-13000", group: 0,
+    title: "Response Content-Type is application/rdap+json",
+    run: async (c) => {
+      const ct = c.headers.get("content-type") || "";
+      return ct.includes("application/rdap+json")
+        ? { status: "pass", detail: ct }
+        : { status: "fail", detail: ct || "(no content-type)" };
+    },
+  },
+  {
+    code: "-13006", group: 0,
+    title: "test.invalid returns 404",
+    run: async (c) => {
+      const r = await fetch(joinURL(c.base, "domain/test.invalid"), { headers: { Accept: "application/rdap+json" } });
+      if (r.status !== 404) return { status: "fail", detail: "HTTP " + r.status + " (want 404)" };
+      const body = await r.json();
+      const ok = body && body.errorCode === 404;
+      return ok ? { status: "pass", detail: "HTTP 404, errorCode 404" }
+                : { status: "fail", detail: "HTTP 404 but errorCode=" + (body && body.errorCode) };
+    },
+  },
+  {
+    code: "-10505", group: 0,
+    title: "rdapConformance not in embedded objects",
+    run: async (c) => {
+      const found = findEmbeddedConformance(c.obj);
+      return found
+        ? { status: "fail", detail: "embedded object has rdapConformance: " + found }
+        : { status: "pass", detail: "only top level declares rdapConformance" };
+    },
+  },
+  {
+    code: "-46200", group: 0,
+    title: "Handle matches <local-id>-<EPPROID>",
+    run: async (c) => {
+      const re = /^[\w_]{1,80}-\w{1,8}$/;
+      const handles = [];
+      collect(c.obj, "handle", handles);
+      // Pure-numeric handles are IANA Registrar IDs (validated separately), not ROIDs.
+      const bad = handles.filter(h => !re.test(h) && !/^\d{1,8}$/.test(h));
+      return bad.length === 0
+        ? { status: "pass", detail: "handles: " + handles.join(", ") }
+        : { status: "fail", detail: "invalid: " + bad.join(", ") };
+    },
+  },
+  {
+    code: "-20300", group: 0,
+    title: "HEAD status equals GET status",
+    run: async (c) => {
+      const url = joinURL(c.base, "domain/" + encodeURIComponent(c.domain));
+      const [get, head] = await Promise.all([
+        fetch(url, { headers: { Accept: "application/rdap+json" } }),
+        fetch(url, { method: "HEAD", headers: { Accept: "application/rdap+json" } }),
+      ]);
+      return get.status === head.status
+        ? { status: "pass", detail: "GET " + get.status + " / HEAD " + head.status }
+        : { status: "fail", detail: "GET " + get.status + " vs HEAD " + head.status };
+    },
+  },
+  {
+    code: "-13005", group: 0,
+    title: "rdapConformance present and starts with rdap_level_0",
+    run: async (c) => {
+      const conf = c.obj.rdapConformance;
+      if (!Array.isArray(conf) || !conf.length) return { status: "fail", detail: "missing rdapConformance" };
+      return conf[0] === "rdap_level_0"
+        ? { status: "pass", detail: conf.join(", ") }
+        : { status: "fail", detail: "first entry = " + conf[0] };
+    },
+  },
+  // --- 2024 Response Profile ---
+  {
+    code: "-46600", group: 1,
+    title: "Status Codes notice links to icann.org/epp",
+    run: async (c) => {
+      const n = findNotice(c.obj, "Status Codes");
+      if (!n) return { status: "fail", detail: "notice not present" };
+      const hrefs = (n.links || []).map(l => l.href).join(" ");
+      return /icann\.org\/epp/.test(hrefs)
+        ? { status: "pass", detail: hrefs }
+        : { status: "fail", detail: hrefs || "(no links)" };
+    },
+  },
+  {
+    code: "-46700", group: 1,
+    title: "RDDS Inaccuracy notice links to icann.org/wicf",
+    run: async (c) => {
+      const n = findNotice(c.obj, "RDDS Inaccuracy Complaint Form");
+      if (!n) return { status: "fail", detail: "notice not present" };
+      const hrefs = (n.links || []).map(l => l.href).join(" ");
+      return /icann\.org\/wicf/.test(hrefs)
+        ? { status: "pass", detail: hrefs }
+        : { status: "fail", detail: hrefs || "(no links)" };
+    },
+  },
+  {
+    code: "-46801", group: 1,
+    title: "secureDNS includes delegationSigned",
+    run: async (c) => {
+      const sd = c.obj.secureDNS;
+      if (!sd) return { status: "fail", detail: "secureDNS missing" };
+      return typeof sd.delegationSigned === "boolean"
+        ? { status: "pass", detail: "delegationSigned=" + sd.delegationSigned }
+        : { status: "fail", detail: "delegationSigned absent or not boolean" };
+    },
+  },
+  {
+    code: "-46900", group: 1,
+    title: "Status values comply with RFC 5731",
+    run: async (c) => {
+      const valid = new Set([
+        "ok", "active", "inactive", "clientHold", "serverHold", "clientTransferProhibited",
+        "serverTransferProhibited", "clientUpdateProhibited", "serverUpdateProhibited",
+        "clientRenewProhibited", "serverRenewProhibited", "clientDeleteProhibited",
+        "serverDeleteProhibited", "pendingCreate", "pendingTransfer", "pendingUpdate",
+        "pendingDelete", "pendingRenew", "pendingRestore", "associated", "addPeriod",
+        "autoRenewPeriod", "renewPeriod", "transferPeriod",
+      ]);
+      const statuses = [];
+      collect(c.obj, "status", statuses);
+      const flat = statuses.flat();
+      const bad = flat.filter(s => !valid.has(s));
+      return bad.length === 0
+        ? { status: "pass", detail: flat.join(", ") }
+        : { status: "fail", detail: "invalid: " + bad.join(", ") };
+    },
+  },
+  // --- Registrar mode ---
+  {
+    code: "-47300", group: 2,
+    title: "Domain includes a registrar entity",
+    run: async (c) => {
+      const reg = entityWithRole(c.obj, "registrar");
+      return reg
+        ? { status: "pass", detail: "handle " + (reg.handle || "?") }
+        : { status: "fail", detail: "no entity with role registrar" };
+    },
+  },
+  {
+    code: "-63000", group: 2,
+    title: "Domain includes a registrant entity",
+    run: async (c) => {
+      const reg = entityWithRole(c.obj, "registrant");
+      return reg
+        ? { status: "pass", detail: "handle " + (reg.handle || "?") }
+        : { status: "fail", detail: "no entity with role registrant" };
+    },
+  },
+  {
+    code: "-47500", group: 2,
+    title: "Registrar exposes an abuse entity with tel + email",
+    run: async (c) => {
+      const reg = entityWithRole(c.obj, "registrar");
+      if (!reg) return { status: "na", detail: "no registrar entity to inspect" };
+      const abuse = (reg.entities || []).find(e => (e.roles || []).includes("abuse"));
+      if (!abuse) return { status: "fail", detail: "no abuse entity under registrar" };
+      const v = abuse.vcardArray && abuse.vcardArray[1] || [];
+      const has = (name) => v.some(p => Array.isArray(p) && p[0] === name);
+      const hasTel = has("tel"), hasEmail = has("email");
+      return (hasTel && hasEmail)
+        ? { status: "pass", detail: "abuse entity has tel + email" }
+        : { status: "fail", detail: "tel=" + hasTel + " email=" + hasEmail };
+    },
+  },
+  {
+    code: "-47700", group: 2,
+    title: "Registrar entity has rel=\"about\" link",
+    run: async (c) => {
+      const reg = entityWithRole(c.obj, "registrar");
+      if (!reg) return { status: "na", detail: "no registrar entity to inspect" };
+      const about = (reg.links || []).find(l => l.rel === "about");
+      return about
+        ? { status: "pass", detail: about.href }
+        : { status: "fail", detail: "no rel=about link on registrar" };
+    },
+  },
+  {
+    code: "-47701", group: 2,
+    title: "About link matches IANA-registered registrar base URL",
+    run: async (c) => {
+      const reg = entityWithRole(c.obj, "registrar");
+      if (!reg) return { status: "na", detail: "no registrar entity to inspect" };
+      const about = (reg.links || []).find(l => l.rel === "about");
+      if (!about) return { status: "na", detail: "no about link" };
+      const expected = c.regBase.trim().replace(/\/+$/, "");
+      if (!expected) return { status: "na", detail: "set the registrar base URL above to compare" };
+      return about.href.replace(/\/+$/, "") === expected
+        ? { status: "pass", detail: about.href }
+        : { status: "fail", detail: "got " + about.href + ", want " + c.regBase };
+    },
+  },
+  {
+    code: "-65600", group: 2,
+    title: "Domain has a \"registrar expiration\" event",
+    run: async (c) => {
+      const evs = (c.obj.events || []).map(e => e.eventAction);
+      return evs.includes("registrar expiration")
+        ? { status: "pass", detail: evs.join(", ") }
+        : { status: "fail", detail: "events: " + (evs.join(", ") || "(none)") };
+    },
+  },
+  // --- TIG ---
+  {
+    code: "-20100", group: 3,
+    title: "Server is served over HTTPS (TIG 1.2)",
+    run: async (c) => {
+      const proto = new URL(c.base).protocol;
+      return proto === "https:"
+        ? { status: "pass", detail: c.base }
+        : { status: "fail", detail: c.base + " (TIG 1.2 requires HTTPS)" };
+    },
+  },
+];
+
+// ---- conformance helpers ----
+function findNotice(obj, title) {
+  if (!Array.isArray(obj.notices)) return null;
+  return obj.notices.find(n => n.title === title) || null;
+}
+
+function entityWithRole(obj, role) {
+  if (!Array.isArray(obj.entities)) return null;
+  return obj.entities.find(e => (e.roles || []).includes(role)) || null;
+}
+
+function collect(obj, key, out) {
+  if (obj === null || typeof obj !== "object") return;
+  if (Array.isArray(obj)) { obj.forEach(v => collect(v, key, out)); return; }
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === key) out.push(v);
+    else if (v && typeof v === "object") collect(v, key, out);
+  }
+}
+
+function findEmbeddedConformance(obj) {
+  // Walk every nested object; flag any non-root object that declares rdapConformance.
+  const seen = [];
+  (function walk(o, path) {
+    if (o === null || typeof o !== "object") return;
+    if (Array.isArray(o)) { o.forEach((v, i) => walk(v, path + "[" + i + "]")); return; }
+    if ("rdapConformance" in o && path !== "") { seen.push(path); }
+    for (const [k, v] of Object.entries(o)) walk(v, path + "." + k);
+  })(obj, "");
+  return seen.length ? seen[0] : null;
+}
+
+// ---- conformance renderer / runner ----
+function renderConfChecks() {
+  const wrap = $("confChecks");
+  wrap.replaceChildren();
+  for (let gi = 0; gi < CONFORMANCE_GROUPS.length; gi++) {
+    const g = document.createElement("div");
+    g.className = "conf-group";
+    g.textContent = CONFORMANCE_GROUPS[gi];
+    wrap.appendChild(g);
+    for (const chk of CONFORMANCE_CHECKS) {
+      if (chk.group !== gi) continue;
+      const row = document.createElement("label");
+      row.className = "conf-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.code = chk.code;
+      cb.checked = true;
+      const span = document.createElement("span");
+      span.innerHTML = '<span class="code">' + esc(chk.code) + '</span> ' + esc(chk.title);
+      row.appendChild(cb);
+      row.appendChild(span);
+      wrap.appendChild(row);
+    }
+  }
+  $("confAll").addEventListener("change", (e) => {
+    document.querySelectorAll("#confChecks input[type=checkbox]").forEach(cb => cb.checked = e.target.checked);
+  });
+}
+
+async function runConformance() {
+  const base = ($("server").value.trim() || DEFAULT_SERVER);
+  const domain = ($("confDomain").value.trim() || "example.com");
+  const mode = $("confMode").value;
+  const regBase = $("confRegBase").value.trim() || "";
+
+  const selected = [...document.querySelectorAll("#confChecks input[type=checkbox]:checked")].map(cb => cb.dataset.code);
+  if (!selected.length) { $("confResults").replaceChildren(emptyEl("No checks selected.")); return; }
+
+  $("confResults").replaceChildren(spinnerEl());
+
+  const url = joinURL(base, "domain/" + encodeURIComponent(domain));
+  const resp = await fetch(url, { headers: { Accept: "application/rdap+json" } });
+  const headers = resp.headers;
+  const obj = resp.ok ? await resp.json() : {};
+
+  const results = document.createElement("div");
+  const summary = { pass: 0, fail: 0, na: 0 };
+
+  for (const chk of CONFORMANCE_CHECKS) {
+    if (!selected.includes(chk.code)) continue;
+    let res;
+    try {
+      res = await chk.run({ base, domain, mode, regBase, obj, headers });
+    } catch (err) {
+      res = { status: "fail", detail: err.message || String(err) };
+    }
+    summary[res.status] = (summary[res.status] || 0) + 1;
+
+    const row = document.createElement("div");
+    row.className = "conf-result " + res.status;
+    const mark = { pass: "✔ PASS", fail: "✘ FAIL", na: "— N/A" }[res.status] || res.status;
+    row.innerHTML =
+      '<span class="mark">' + mark + '</span>' +
+      '<span class="code">' + esc(chk.code) + '</span>' +
+      '<span class="title">' + esc(chk.title) + '</span>' +
+      '<span class="detail">' + esc(res.detail || "") + '</span>';
+    results.appendChild(row);
+  }
+
+  const head = document.createElement("div");
+  head.className = "conf-summary";
+  head.innerHTML =
+    'Conformance results — <b class="ok">' + summary.pass + ' pass</b> · ' +
+    '<b class="fail">' + summary.fail + ' fail</b> · ' +
+    '<b class="na">' + summary.na + ' n/a</b>';
+  results.prepend(head);
+
+  $("confResults").replaceChildren(results);
+}
+
+function emptyEl(text) {
+  const d = document.createElement("div");
+  d.className = "empty";
+  d.textContent = text;
+  return d;
+}
+
+function spinnerEl() {
+  const d = document.createElement("div");
+  d.className = "loading";
+  const s = document.createElement("span");
+  s.className = "spin";
+  d.appendChild(s);
+  d.appendChild(document.createTextNode("Running conformance checks…"));
+  return d;
+}
+
+renderConfChecks();
+$("confRun").addEventListener("click", runConformance);
 </script>
 </body>
 </html>

@@ -496,6 +496,11 @@ A dependency-free, single-file browser client lives at
 - **IANA bootstrap resolution** (RFC 7484): with *Bootstrap* on, it auto-finds the
   authoritative RDAP server for the queried TLD / network / ASN. With it off, it
   queries your own server directly.
+- **Built-in conformance checker** — a client-side subset of the ICANN RDAPCT
+  checks (STD 95 + 2024 Response Profile + TIG) with selectable checkboxes, run
+  against any target server. Covers Content-Type, 404 handling, `rdapConformance`,
+  handle formats, mandatory notices, `secureDNS`, status values, registrar /
+  registrant / abuse entities, `rel="about"` links, HEAD parity, and HTTPS.
 - **Clean rendering** of statuses, events, jCard contact data, nameservers,
   DNSSEC, and links — plus a raw-JSON view.
 
